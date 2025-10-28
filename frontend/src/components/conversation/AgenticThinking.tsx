@@ -17,24 +17,24 @@ const ThinkingStepItem: React.FC<{ step: ThinkingStep; depth?: number }> = ({ st
   const hasSubsteps = step.substeps && step.substeps.length > 0;
 
   return (
-    <div className={`${depth > 0 ? 'ml-4 mt-1' : 'mt-1.5'}`}>
-      <div className="flex items-center gap-2 text-xs">
+    <div className={`${depth > 0 ? 'ml-6 mt-2' : 'mt-0'}`}>
+      <div className="flex items-center gap-2.5 text-sm">
         {step.status === 'pending' && (
-          <div className="w-1 h-1 bg-slate-300 rounded-full" />
+          <div className="w-1.5 h-1.5 bg-gray-300 rounded-full" />
         )}
         {step.status === 'active' && (
-          <Loader2 className="w-3 h-3 text-blue-600 animate-spin" />
+          <Loader2 className="w-3.5 h-3.5 text-[#2563EB] animate-spin" />
         )}
         {step.status === 'complete' && (
-          <CheckCircle2 className="w-3 h-3 text-green-600" />
+          <CheckCircle2 className="w-3.5 h-3.5 text-gray-400" />
         )}
         
         <span className={`${
           step.status === 'active' 
-            ? 'text-slate-900 font-medium' 
+            ? 'text-gray-700' 
             : step.status === 'complete'
-            ? 'text-slate-600'
-            : 'text-slate-400'
+            ? 'text-gray-500'
+            : 'text-gray-400'
         }`}>
           {step.label}
         </span>
@@ -62,7 +62,7 @@ const ThinkingStepItem: React.FC<{ step: ThinkingStep; depth?: number }> = ({ st
 
 export const AgenticThinking: React.FC<AgenticThinkingProps> = ({ steps }) => {
   return (
-    <div className="py-2 space-y-0.5">
+    <div className="py-3 space-y-2">
       {steps.map((step) => (
         <ThinkingStepItem key={step.id} step={step} />
       ))}
