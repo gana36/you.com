@@ -11,8 +11,9 @@ import { NewsCards } from './components/results/NewsCards';
 import { FAQCard } from './components/results/FAQCard';
 import { PlanComparisonTable } from './components/results/PlanComparisonTable';
 import { QuickActionChips } from './components/conversation/QuickActionChips';
-import { EvidenceDrawer } from './components/conversation/EvidenceDrawer';
-import { dummyPlans, dummyCounties, dummyProviders, dummyNews, dummyFAQs, dummyEvidenceSteps } from './data/dummyData';
+import { ContentViewer } from './components/conversation/ContentViewer';
+import { InlineReasoning } from './components/conversation/InlineReasoning';
+import { dummyPlans, dummyCounties, dummyProviders, dummyNews, dummyFAQs, dummyReasoningSteps, dummyFullContent } from './data/dummyData';
 
 interface Message {
   id: string;
@@ -33,8 +34,8 @@ function App() {
   const [collectedEntities, setCollectedEntities] = useState<Record<string, any>>({});
   const [currentEntityIndex, setCurrentEntityIndex] = useState(0);
   const [missingEntities, setMissingEntities] = useState<string[]>([]);
-  const [evidenceDrawerOpen, setEvidenceDrawerOpen] = useState(false);
-  const [evidenceSteps, setEvidenceSteps] = useState<any[]>([]);
+  const [contentViewerOpen, setContentViewerOpen] = useState(false);
+  const [viewerContent, setViewerContent] = useState<any>(null);
 
   useEffect(() => {
     setMessages([{
@@ -273,16 +274,24 @@ function App() {
     setMessages(prev => prev.filter(msg => msg.id !== messageId));
     
     let resultContent: React.ReactNode;
-    let evidenceStepsToShow: any[] = [];
+    let reasoningSteps: any[] = [];
 
     // Handle different intents with specialized components
     if (intent === 'News') {
+      reasoningSteps = dummyReasoningSteps.news;
       resultContent = (
         <div className="space-y-8">
           <p className="text-gray-700">
             Here's the latest health insurance news for Florida:
           </p>
-          <NewsCards articles={dummyNews} />
+          <NewsCards 
+            articles={dummyNews}
+            onArticleClick={(idx) => {
+              setViewerContent(dummyFullContent.news[idx]);
+              setContentViewerOpen(true);
+            }}
+          />
+          <InlineReasoning steps={reasoningSteps} />
           <QuickActionChips 
             actions={['Set up enrollment reminder', 'Compare plans', 'Find providers']}
             onActionClick={(action) => console.log('Action:', action)}
@@ -290,6 +299,7 @@ function App() {
         </div>
       );
     } else if (intent === 'FAQ') {
+      reasoningSteps = dummyReasoningSteps.faq;
       const faqKey = 'coinsurance'; // Default, could be extracted from query
       const faq = dummyFAQs[faqKey as keyof typeof dummyFAQs];
       resultContent = (
@@ -299,6 +309,7 @@ function App() {
             definition={faq.definition}
             example={faq.example}
           />
+          <InlineReasoning steps={reasoningSteps} />
           <QuickActionChips 
             actions={['Show example', 'Compare rates', 'See related terms']}
             onActionClick={(action) => console.log('Action:', action)}
@@ -306,8 +317,8 @@ function App() {
         </div>
       );
     } else if (intent === 'ProviderNetwork') {
+      reasoningSteps = dummyReasoningSteps.provider;
       const provider = dummyProviders[0];
-      evidenceStepsToShow = dummyEvidenceSteps.provider;
       resultContent = (
         <div className="space-y-8">
           <p className="text-gray-700">
@@ -319,7 +330,12 @@ function App() {
             location={provider.location}
             acceptingNewPatients={provider.acceptingNewPatients}
             coveredPlans={provider.coveredPlans}
+            onClick={() => {
+              setViewerContent(dummyFullContent.providers[0]);
+              setContentViewerOpen(true);
+            }}
           />
+          <InlineReasoning steps={reasoningSteps} />
           <QuickActionChips 
             actions={['See full provider directory', 'Compare plan coverage', 'Book appointment']}
             onActionClick={(action) => console.log('Action:', action)}
@@ -327,10 +343,10 @@ function App() {
         </div>
       );
     } else if (intent === 'Comparison') {
+      reasoningSteps = dummyReasoningSteps.comparison;
       const plansArray = Array.isArray(data.plans) 
         ? data.plans 
         : dummyPlans.slice(0, 2);
-      evidenceStepsToShow = dummyEvidenceSteps.comparison;
       resultContent = (
         <div className="space-y-8">
           <p className="text-gray-700">
@@ -340,6 +356,7 @@ function App() {
             plans={plansArray}
             recommendedPlanId={plansArray[0]?.id}
           />
+          <InlineReasoning steps={reasoningSteps} />
           <QuickActionChips 
             actions={['Export comparison', 'Add another plan', 'See provider networks']}
             onActionClick={(action) => console.log('Action:', action)}
@@ -348,12 +365,12 @@ function App() {
       );
     } else {
       // Default: PlanInfo
+      reasoningSteps = dummyReasoningSteps.planInfo;
       const plansArray = Array.isArray(data.plans) 
         ? data.plans 
         : data.plans 
           ? [data.plans] 
           : dummyPlans.slice(0, 3);
-      evidenceStepsToShow = dummyEvidenceSteps.planInfo;
       resultContent = (
         <div className="space-y-8">
           <p className="text-gray-700">
@@ -368,6 +385,7 @@ function App() {
               />
             ))}
           </div>
+          <InlineReasoning steps={reasoningSteps} />
           <QuickActionChips 
             actions={['Compare to other plans', 'See full SBC PDF', 'Find providers nearby']}
             onActionClick={(action) => console.log('Action:', action)}
@@ -381,12 +399,6 @@ function App() {
       type: 'agent',
       content: resultContent
     }]);
-    
-    // Open evidence drawer if we have steps
-    if (evidenceStepsToShow.length > 0) {
-      setEvidenceSteps(evidenceStepsToShow);
-      setEvidenceDrawerOpen(true);
-    }
     
     setActiveMessageId(null);
   };
@@ -408,11 +420,11 @@ function App() {
         <ChatInput onSend={handleSendMessage} disabled={activeMessageId !== null} />
       </div>
       
-      {/* Evidence Drawer */}
-      <EvidenceDrawer
-        isOpen={evidenceDrawerOpen}
-        onClose={() => setEvidenceDrawerOpen(false)}
-        steps={evidenceSteps}
+      {/* Content Viewer */}
+      <ContentViewer
+        isOpen={contentViewerOpen}
+        onClose={() => setContentViewerOpen(false)}
+        content={viewerContent}
       />
     </div>
   );

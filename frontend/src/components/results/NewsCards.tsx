@@ -12,19 +12,18 @@ interface NewsArticle {
 
 interface NewsCardsProps {
   articles: NewsArticle[];
+  onArticleClick?: (index: number) => void;
 }
 
-export const NewsCards: React.FC<NewsCardsProps> = ({ articles }) => {
+export const NewsCards: React.FC<NewsCardsProps> = ({ articles, onArticleClick }) => {
   return (
     <div className="overflow-x-auto -mx-6 px-6">
       <div className="flex gap-6 pb-4">
         {articles.map((article, idx) => (
-          <a
+          <button
             key={idx}
-            href={article.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-96 flex-shrink-0 bg-white border border-gray-200 rounded-xl p-6 hover:border-[#2563EB] hover:shadow-md transition-all group"
+            onClick={() => onArticleClick?.(idx)}
+            className="w-96 flex-shrink-0 bg-white border border-gray-200 rounded-xl p-6 hover:border-[#2563EB] hover:shadow-md transition-all group text-left"
           >
             {/* External link icon */}
             <div className="flex justify-end mb-3">
@@ -56,7 +55,7 @@ export const NewsCards: React.FC<NewsCardsProps> = ({ articles }) => {
                 <span>{article.date}</span>
               </div>
             </div>
-          </a>
+          </button>
         ))}
       </div>
     </div>

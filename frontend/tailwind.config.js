@@ -21,7 +21,7 @@ export default {
       },
       maxWidth: {
         'chat': '680px',
-        'drawer': '384px',
+        'drawer': '50vw',
       },
     },
   },
