@@ -8,6 +8,10 @@ export { ReasoningTrace } from './ReasoningTrace';
 export { SourceBadge } from './SourceBadge';
 export { NextActionPills } from './NextActionPills';
 export { EntityPrompt } from './EntityPrompt';
+export { Header } from './Header';
+export { CitationBadge } from './CitationBadge';
+export { QuickActionChips } from './QuickActionChips';
+export { EvidenceDrawer } from './EvidenceDrawer';
 
 export type { AgentStep } from './AgentRouting';
 export type { TraceStep } from './ReasoningTrace';

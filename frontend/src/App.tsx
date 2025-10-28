@@ -6,8 +6,13 @@ import { AgenticThinking } from './components/conversation/AgenticThinking';
 import { QueryConstructor } from './components/conversation/QueryConstructor';
 import { ProgressiveEntityCollector } from './components/conversation/ProgressiveEntityCollector';
 import { CompactPlanCard } from './components/results/CompactPlanCard';
-import { SourceBadge } from './components/conversation/SourceBadge';
-import { dummyPlans, dummyCounties } from './data/dummyData';
+import { ProviderCard } from './components/results/ProviderCard';
+import { NewsCards } from './components/results/NewsCards';
+import { FAQCard } from './components/results/FAQCard';
+import { PlanComparisonTable } from './components/results/PlanComparisonTable';
+import { QuickActionChips } from './components/conversation/QuickActionChips';
+import { EvidenceDrawer } from './components/conversation/EvidenceDrawer';
+import { dummyPlans, dummyCounties, dummyProviders, dummyNews, dummyFAQs, dummyEvidenceSteps } from './data/dummyData';
 
 interface Message {
   id: string;
@@ -28,14 +33,39 @@ function App() {
   const [collectedEntities, setCollectedEntities] = useState<Record<string, any>>({});
   const [currentEntityIndex, setCurrentEntityIndex] = useState(0);
   const [missingEntities, setMissingEntities] = useState<string[]>([]);
+  const [evidenceDrawerOpen, setEvidenceDrawerOpen] = useState(false);
+  const [evidenceSteps, setEvidenceSteps] = useState<any[]>([]);
 
   useEffect(() => {
     setMessages([{
       id: '0',
       type: 'agent',
       content: (
-        <div className="text-sm text-slate-700">
-          <p>Hi! I can help you find and compare health insurance plans, check coverage, and search for providers.</p>
+        <div className="space-y-3">
+          <p className="text-gray-700">
+            Hi! I'm your Health Insurance Copilot. I can help you:
+          </p>
+          <ul className="space-y-2 text-gray-600 text-sm">
+            <li className="flex items-start gap-2">
+              <span className="text-[#2563EB] mt-0.5">•</span>
+              <span>Find and compare health insurance plans</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-[#2563EB] mt-0.5">•</span>
+              <span>Check coverage details and benefits</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-[#2563EB] mt-0.5">•</span>
+              <span>Search for in-network providers</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-[#2563EB] mt-0.5">•</span>
+              <span>Explain insurance terms and concepts</span>
+            </li>
+          </ul>
+          <p className="text-gray-500 text-sm">
+            Try asking a question or click one of the suggestions below.
+          </p>
         </div>
       )
     }]);
@@ -45,7 +75,7 @@ function App() {
     const userMessage: Message = {
       id: Date.now().toString(),
       type: 'user',
-      content: <div className="text-sm">{text}</div>
+      content: <div>{text}</div>
     };
     setMessages(prev => [...prev, userMessage]);
 
@@ -93,7 +123,9 @@ function App() {
   const detectIntent = (text: string): string => {
     const lower = text.toLowerCase();
     if (lower.includes('compare')) return 'Comparison';
-    if (lower.includes('provider') || lower.includes('doctor')) return 'ProviderNetwork';
+    if (lower.includes('provider') || lower.includes('doctor') || lower.includes('dr.')) return 'ProviderNetwork';
+    if (lower.includes('news') || lower.includes('latest') || lower.includes('update')) return 'News';
+    if (lower.includes('explain') || lower.includes('what is') || lower.includes('define')) return 'FAQ';
     if (lower.includes('cover')) return 'CoverageDetail';
     return 'PlanInfo';
   };
@@ -237,25 +269,97 @@ function App() {
   };
 
   const showResults = (messageId: string, intent: string, data: any) => {
-    // Ensure we have an array of plans
-    const plansArray = Array.isArray(data.plans) 
-      ? data.plans 
-      : data.plans 
-        ? [data.plans] 
-        : dummyPlans.slice(0, 3);
-
-    // Remove thinking message and add results
+    // Remove thinking message
     setMessages(prev => prev.filter(msg => msg.id !== messageId));
     
-    setMessages(prev => [...prev, {
-      id: messageId + '-results',
-      type: 'agent',
-      content: (
-        <div className="space-y-2">
-          <div className="text-sm text-slate-700 mb-2">
+    let resultContent: React.ReactNode;
+    let evidenceStepsToShow: any[] = [];
+
+    // Handle different intents with specialized components
+    if (intent === 'News') {
+      resultContent = (
+        <div className="space-y-8">
+          <p className="text-gray-700">
+            Here's the latest health insurance news for Florida:
+          </p>
+          <NewsCards articles={dummyNews} />
+          <QuickActionChips 
+            actions={['Set up enrollment reminder', 'Compare plans', 'Find providers']}
+            onActionClick={(action) => console.log('Action:', action)}
+          />
+        </div>
+      );
+    } else if (intent === 'FAQ') {
+      const faqKey = 'coinsurance'; // Default, could be extracted from query
+      const faq = dummyFAQs[faqKey as keyof typeof dummyFAQs];
+      resultContent = (
+        <div className="space-y-8">
+          <FAQCard
+            term={faq.term}
+            definition={faq.definition}
+            example={faq.example}
+          />
+          <QuickActionChips 
+            actions={['Show example', 'Compare rates', 'See related terms']}
+            onActionClick={(action) => console.log('Action:', action)}
+          />
+        </div>
+      );
+    } else if (intent === 'ProviderNetwork') {
+      const provider = dummyProviders[0];
+      evidenceStepsToShow = dummyEvidenceSteps.provider;
+      resultContent = (
+        <div className="space-y-8">
+          <p className="text-gray-700">
+            Found provider information:
+          </p>
+          <ProviderCard
+            name={provider.name}
+            specialty={provider.specialty}
+            location={provider.location}
+            acceptingNewPatients={provider.acceptingNewPatients}
+            coveredPlans={provider.coveredPlans}
+          />
+          <QuickActionChips 
+            actions={['See full provider directory', 'Compare plan coverage', 'Book appointment']}
+            onActionClick={(action) => console.log('Action:', action)}
+          />
+        </div>
+      );
+    } else if (intent === 'Comparison') {
+      const plansArray = Array.isArray(data.plans) 
+        ? data.plans 
+        : dummyPlans.slice(0, 2);
+      evidenceStepsToShow = dummyEvidenceSteps.comparison;
+      resultContent = (
+        <div className="space-y-8">
+          <p className="text-gray-700">
+            Here's a detailed comparison of the plans:
+          </p>
+          <PlanComparisonTable 
+            plans={plansArray}
+            recommendedPlanId={plansArray[0]?.id}
+          />
+          <QuickActionChips 
+            actions={['Export comparison', 'Add another plan', 'See provider networks']}
+            onActionClick={(action) => console.log('Action:', action)}
+          />
+        </div>
+      );
+    } else {
+      // Default: PlanInfo
+      const plansArray = Array.isArray(data.plans) 
+        ? data.plans 
+        : data.plans 
+          ? [data.plans] 
+          : dummyPlans.slice(0, 3);
+      evidenceStepsToShow = dummyEvidenceSteps.planInfo;
+      resultContent = (
+        <div className="space-y-8">
+          <p className="text-gray-700">
             Found {intent === 'Comparison' ? 'plans to compare' : 'plan information'} based on your criteria.
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          </p>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {plansArray.map((plan: any, idx: number) => (
               <CompactPlanCard
                 key={plan.id}
@@ -264,29 +368,31 @@ function App() {
               />
             ))}
           </div>
-          <div className="flex flex-wrap gap-2 mt-3">
-            <SourceBadge
-              source="healthcare.gov"
-              url="https://healthcare.gov"
-              verified={true}
-              year="2025"
-            />
-            <SourceBadge
-              source={`${plansArray[0]?.carrier.toLowerCase().replace(/\s+/g, '')}.com`}
-              url={`https://${plansArray[0]?.carrier.toLowerCase().replace(/\s+/g, '')}.com`}
-              verified={true}
-              year="2025"
-            />
-          </div>
+          <QuickActionChips 
+            actions={['Compare to other plans', 'See full SBC PDF', 'Find providers nearby']}
+            onActionClick={(action) => console.log('Action:', action)}
+          />
         </div>
-      )
+      );
+    }
+
+    setMessages(prev => [...prev, {
+      id: messageId + '-results',
+      type: 'agent',
+      content: resultContent
     }]);
+    
+    // Open evidence drawer if we have steps
+    if (evidenceStepsToShow.length > 0) {
+      setEvidenceSteps(evidenceStepsToShow);
+      setEvidenceDrawerOpen(true);
+    }
     
     setActiveMessageId(null);
   };
 
   return (
-    <div className="h-screen flex flex-col">
+    <div className="h-screen flex flex-col relative overflow-hidden">
       <ChatLayout>
         {messages.map((message) => (
           <ConversationMessage
@@ -296,7 +402,18 @@ function App() {
           />
         ))}
       </ChatLayout>
-      <ChatInput onSend={handleSendMessage} disabled={activeMessageId !== null} />
+      
+      {/* Fixed input at bottom */}
+      <div className="flex-shrink-0">
+        <ChatInput onSend={handleSendMessage} disabled={activeMessageId !== null} />
+      </div>
+      
+      {/* Evidence Drawer */}
+      <EvidenceDrawer
+        isOpen={evidenceDrawerOpen}
+        onClose={() => setEvidenceDrawerOpen(false)}
+        steps={evidenceSteps}
+      />
     </div>
   );
 }
