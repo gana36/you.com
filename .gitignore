@@ -60,3 +60,6 @@ public/build/
 # Example files
 **/example/
 **/examples/
+
+# venv
+youcom
