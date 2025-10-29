@@ -23,7 +23,17 @@ export const ProgressiveEntityCollector: React.FC<ProgressiveEntityCollectorProp
       'county': 'Which county?',
       'age': 'Your age?',
       'plans': 'Select plans to compare',
-      'plan_name': 'Which plan?'
+      'plan_name': 'Which plan?',
+      'insurer': 'Which insurance company?',
+      'year': 'Which year?',
+      'income': 'Annual income?',
+      'coverage_item': 'What coverage item?',
+      'subtype': 'Specify subtype:',
+      'provider_name': 'Provider name?',
+      'specialty': 'Medical specialty?',
+      'features': 'Features to compare?',
+      'topic': 'Topic?',
+      'state': 'Which state?'
     };
     return prompts[entityType] || 'Enter value';
   };
@@ -65,11 +75,20 @@ export const ProgressiveEntityCollector: React.FC<ProgressiveEntityCollectorProp
           }}
           onFocus={() => setShowDropdown(true)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && inputValue && entityType === 'age') {
-              handleSelect(parseInt(inputValue));
+            if (e.key === 'Enter' && inputValue) {
+              if (entityType === 'age' || entityType === 'income' || entityType === 'year') {
+                handleSelect(parseInt(inputValue));
+              } else {
+                handleSelect(inputValue);
+              }
             }
           }}
-          placeholder={entityType === 'age' ? 'e.g., 35' : 'Type to search...'}
+          placeholder={
+            entityType === 'age' ? 'e.g., 35' :
+            entityType === 'income' ? 'e.g., 50000' :
+            entityType === 'year' ? 'e.g., 2025' :
+            'Type to search...'
+          }
           className="px-3.5 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] outline-none w-48 bg-white"
           autoFocus
         />
@@ -110,6 +129,20 @@ export const ProgressiveEntityCollector: React.FC<ProgressiveEntityCollectorProp
               className="px-3 py-1.5 text-sm bg-gray-50 hover:bg-[#2563EB]/10 hover:text-[#2563EB] text-gray-700 rounded-lg border border-gray-200 hover:border-[#2563EB] transition-all"
             >
               {age}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {entityType === 'year' && (
+        <div className="flex items-center gap-2">
+          {[2024, 2025].map((year) => (
+            <button
+              key={year}
+              onClick={() => handleSelect(year)}
+              className="px-3 py-1.5 text-sm bg-gray-50 hover:bg-[#2563EB]/10 hover:text-[#2563EB] text-gray-700 rounded-lg border border-gray-200 hover:border-[#2563EB] transition-all"
+            >
+              {year}
             </button>
           ))}
         </div>

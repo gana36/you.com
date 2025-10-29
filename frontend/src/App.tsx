@@ -14,6 +14,7 @@ import { QuickActionChips } from './components/conversation/QuickActionChips';
 import { ContentViewer } from './components/conversation/ContentViewer';
 import { InlineReasoning } from './components/conversation/InlineReasoning';
 import { dummyPlans, dummyCounties, dummyProviders, dummyNews, dummyFAQs, dummyReasoningSteps, dummyFullContent } from './data/dummyData';
+import { API_BASE_URL } from './config';
 
 interface Message {
   id: string;
@@ -36,6 +37,9 @@ function App() {
   const [missingEntities, setMissingEntities] = useState<string[]>([]);
   const [contentViewerOpen, setContentViewerOpen] = useState(false);
   const [viewerContent, setViewerContent] = useState<any>(null);
+  const [evidenceDrawerOpen, setEvidenceDrawerOpen] = useState(false);
+  const [evidenceSteps, setEvidenceSteps] = useState<any[]>([]);
+  const [sessionId, setSessionId] = useState<string | null>(null);
 
   useEffect(() => {
     setMessages([{
@@ -80,14 +84,15 @@ function App() {
     };
     setMessages(prev => [...prev, userMessage]);
 
-    // Reset state
+    // Reset state for new query
     setCollectedEntities({});
     setCurrentEntityIndex(0);
+    setMissingEntities([]);
 
     // Start agentic thinking
     const thinkingId = (Date.now() + 1).toString();
     const intent = detectIntent(text);
-    
+
     const thinkingMessage: Message = {
       id: thinkingId,
       type: 'agent',
@@ -96,29 +101,80 @@ function App() {
     setMessages(prev => [...prev, thinkingMessage]);
     setActiveMessageId(thinkingId);
 
-    // Simulate thinking progression
-    setTimeout(() => {
+    // Call backend to detect intent and extract entities
+    setTimeout(async () => {
       updateThinkingStep(thinkingId, 'intent', 'complete');
-      
-      setTimeout(() => {
-        updateThinkingStep(thinkingId, 'entities', 'active');
-        
-        setTimeout(() => {
-          const missing = getMissingEntities(intent, text);
+      updateThinkingStep(thinkingId, 'entities', 'active');
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId, query: text })
+        });
+
+        const data = await response.json();
+
+        // DEBUG: Log backend response
+        console.log('=== DEBUG: Backend Response ===');
+        console.log('Intent:', intent);
+        console.log('Requires input:', data.requires_input);
+        console.log('Next question:', data.next_question);
+        console.log('Collected entities:', data.collected_entities);
+        console.log('Status:', data.status);
+
+        if (!sessionId) setSessionId(data.session_id);
+
+        updateThinkingStep(thinkingId, 'entities', 'complete');
+
+        // Check if backend requires any more information
+        if (data.requires_input && data.next_question) {
+          console.log('Backend requires input! Starting entity collection...');
+          // Backend is asking for more info - trust the backend's determination
+          // Don't try to filter entities on frontend, backend knows what's needed
+          updateThinkingStep(thinkingId, 'collection', 'active');
+
+          // Show the question from backend
+          setMessages(prev => [...prev, {
+            id: thinkingId + '-question',
+            type: 'agent',
+            content: <div className="text-gray-700">{data.response}</div>
+          }]);
+
+          // Determine all possible entities that might be missing
+          const allPossibleEntities = ['plan_name', 'insurer', 'year', 'county', 'age', 'income',
+                                        'coverage_item', 'subtype', 'provider_name', 'specialty',
+                                        'features', 'topic', 'state'];
+          const missing = allPossibleEntities.filter(e => !data.collected_entities[e]);
+
           setMissingEntities(missing);
-          
+
+          // Start collecting the first missing entity
           if (missing.length > 0) {
-            updateThinkingStep(thinkingId, 'entities', 'complete');
-            updateThinkingStep(thinkingId, 'collection', 'active');
-            startEntityCollection(thinkingId, intent, missing);
-          } else {
-            updateThinkingStep(thinkingId, 'entities', 'complete');
-            updateThinkingStep(thinkingId, 'collection', 'complete');
-            constructQuery(thinkingId, intent, {});
+            startEntityCollection(thinkingId, intent, missing, data.session_id);
           }
-        }, 600);
-      }, 500);
-    }, 400);
+        } else if (data.status === 'complete' || data.search_results) {
+          // Backend has completed gathering info and has results
+          console.log('Backend has completed, showing results...');
+          updateThinkingStep(thinkingId, 'collection', 'complete');
+          performSearch(thinkingId, intent, data.session_id);
+        } else {
+          // No collection needed, proceed directly to search
+          console.log('No entity collection needed, proceeding to search...');
+          updateThinkingStep(thinkingId, 'collection', 'complete');
+          performSearch(thinkingId, intent, data.session_id);
+        }
+      } catch (error) {
+        console.error('Backend error:', error);
+        setMessages(prev => prev.filter(msg => msg.id !== thinkingId));
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          type: 'agent',
+          content: <div className="text-red-600">Error connecting to backend at {API_BASE_URL}</div>
+        }]);
+        setActiveMessageId(null);
+      }
+    }, 500);
   };
 
   const detectIntent = (text: string): string => {
@@ -171,34 +227,14 @@ function App() {
     }));
   };
 
-  const getMissingEntities = (intent: string, query: string): string[] => {
-    const missing: string[] = [];
-    const lower = query.toLowerCase();
-    
-    if (intent === 'Comparison') {
-      if (!lower.includes('molina') && !lower.includes('aetna') && !lower.includes('cigna')) {
-        missing.push('plans');
-      }
-    } else {
-      if (!lower.includes('broward') && !lower.includes('miami') && !lower.includes('palm beach')) {
-        missing.push('county');
-      }
-      if (!lower.match(/\d{2}/)) {
-        missing.push('age');
-      }
-    }
-    
-    return missing;
-  };
-
-  const startEntityCollection = (messageId: string, intent: string, missing: string[]) => {
+  const startEntityCollection = (messageId: string, intent: string, missing: string[], session: string) => {
     setMessages(prev => [...prev, {
       id: messageId + '-collect',
       type: 'agent',
       content: (
         <ProgressiveEntityCollector
           entityType={missing[0]}
-          onCollect={(value) => handleEntityValue(messageId, intent, missing[0], value)}
+          onCollect={(value) => handleEntityValue(messageId, intent, missing[0], value, session)}
           plans={dummyPlans}
           counties={dummyCounties}
         />
@@ -206,49 +242,99 @@ function App() {
     }]);
   };
 
-  const handleEntityValue = (messageId: string, intent: string, entityType: string, value: any) => {
+  const handleEntityValue = async (messageId: string, intent: string, entityType: string, value: any, session: string) => {
     const newCollected = { ...collectedEntities, [entityType]: value };
     setCollectedEntities(newCollected);
 
     // Remove the entity collector message
     setMessages(prev => prev.filter(msg => msg.id !== messageId + '-collect'));
 
-    const nextIndex = currentEntityIndex + 1;
-    setCurrentEntityIndex(nextIndex);
+    // Send the collected value to backend
+    const valueStr = entityType === 'age' || entityType === 'income'
+      ? String(value)
+      : entityType === 'county'
+        ? value.name || value
+        : String(value);
 
-    if (nextIndex < missingEntities.length) {
-      // Ask for next entity
-      setTimeout(() => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: session,
+          query: valueStr
+        })
+      });
+
+      const data = await response.json();
+
+      console.log('=== Entity collected, backend response ===');
+      console.log('Requires input:', data.requires_input);
+      console.log('Status:', data.status);
+      console.log('Collected entities:', data.collected_entities);
+
+      // Update collected entities from backend
+      setCollectedEntities(data.collected_entities);
+
+      // Check if backend needs more info or is ready to search
+      if (data.requires_input && data.next_question) {
+        // Backend wants more info - show the acknowledgment/question
         setMessages(prev => [...prev, {
-          id: messageId + '-collect',
+          id: messageId + '-ack-' + Date.now(),
           type: 'agent',
-          content: (
-            <ProgressiveEntityCollector
-              entityType={missingEntities[nextIndex]}
-              onCollect={(value) => handleEntityValue(messageId, intent, missingEntities[nextIndex], value)}
-              plans={dummyPlans}
-              counties={dummyCounties}
-            />
-          )
+          content: <div className="text-gray-700">{data.response}</div>
         }]);
-      }, 200);
-    } else {
-      // All entities collected
-      updateThinkingStep(messageId, 'collection', 'complete');
-      constructQuery(messageId, intent, newCollected);
+
+        // Determine what's still missing based on backend response
+        const allPossibleEntities = ['plan_name', 'insurer', 'year', 'county', 'age', 'income',
+                                      'coverage_item', 'subtype', 'provider_name', 'specialty',
+                                      'features', 'topic', 'state'];
+        const stillMissing = allPossibleEntities.filter(e => !data.collected_entities[e]);
+
+        if (stillMissing.length > 0) {
+          setMissingEntities(stillMissing);
+          // Ask for next entity
+          setTimeout(() => {
+            setMessages(prev => [...prev, {
+              id: messageId + '-collect',
+              type: 'agent',
+              content: (
+                <ProgressiveEntityCollector
+                  entityType={stillMissing[0]}
+                  onCollect={(value) => handleEntityValue(messageId, intent, stillMissing[0], value, session)}
+                  plans={dummyPlans}
+                  counties={dummyCounties}
+                />
+              )
+            }]);
+          }, 500);
+        }
+      } else {
+        // Backend is done collecting, perform search
+        console.log('All entities collected! Performing search...');
+        updateThinkingStep(messageId, 'collection', 'complete');
+        performSearch(messageId, intent, session);
+      }
+    } catch (error) {
+      console.error('Error sending entity to backend:', error);
     }
   };
 
-  const constructQuery = (messageId: string, intent: string, data: any) => {
+  const performSearch = async (messageId: string, intent: string, session: string) => {
     updateThinkingStep(messageId, 'query', 'active');
 
-    // Build query string
+    // Build query string with only collected entities (no undefined values)
     const queryParts: string[] = [];
-    if (data.county) queryParts.push(`county:"${data.county.name}"`);
-    if (data.age) queryParts.push(`age:${data.age}`);
-    if (data.plans) queryParts.push(`plans:${data.plans.length}`);
-    
-    const queryString = `search(${queryParts.join(', ')}) site:healthcare.gov`;
+    if (collectedEntities.age) queryParts.push(`age:${collectedEntities.age}`);
+    if (collectedEntities.income) queryParts.push(`income:${collectedEntities.income}`);
+    if (collectedEntities.county) {
+      const countyName = typeof collectedEntities.county === 'object' ? collectedEntities.county.name : collectedEntities.county;
+      queryParts.push(`county:"${countyName}"`);
+    }
+
+    const queryString = queryParts.length > 0
+      ? `search(${queryParts.join(', ')}) site:healthcare.gov`
+      : `search(health insurance) site:healthcare.gov`;
 
     setMessages(prev => [...prev, {
       id: messageId + '-query',
@@ -259,36 +345,66 @@ function App() {
     setTimeout(() => {
       updateThinkingStep(messageId, 'query', 'complete');
       updateThinkingStep(messageId, 'search', 'active');
-      
-      setTimeout(() => {
-        updateThinkingStep(messageId, 'search', 'complete');
-        // Remove query constructor
-        setMessages(prev => prev.filter(msg => msg.id !== messageId + '-query'));
-        showResults(messageId, intent, data);
-      }, 1000);
+
+      // Get search results from backend (they're already there)
+      fetch(`${API_BASE_URL}/session/${session}`)
+        .then(res => res.json())
+        .then(sessionData => {
+          setTimeout(() => {
+            updateThinkingStep(messageId, 'search', 'complete');
+            setMessages(prev => prev.filter(msg => msg.id !== messageId + '-query'));
+
+            // Check if we have search results from backend
+            const lastMessage = sessionData.conversation_history[sessionData.conversation_history.length - 1];
+            const searchResults = lastMessage?.search_results;
+
+            if (searchResults && searchResults.length > 0) {
+              // Transform You.com results into insurance plan format for display
+              showResultsFromSearch(messageId, intent, searchResults);
+            } else {
+              // No results, show empty state
+              showResultsFromSearch(messageId, intent, []);
+            }
+          }, 1000);
+        })
+        .catch(error => {
+          console.error('Error fetching session:', error);
+          showResultsFromSearch(messageId, intent, []);
+        });
     }, 800);
   };
 
-  const showResults = (messageId: string, intent: string, data: any) => {
+  const showResultsFromSearch = (messageId: string, intent: string, searchResults: any[]) => {
     // Remove thinking message
     setMessages(prev => prev.filter(msg => msg.id !== messageId));
-    
+
     let resultContent: React.ReactNode;
     let reasoningSteps: any[] = [];
+    let evidenceStepsToShow: any[] = [];
 
     // Handle different intents with specialized components
     if (intent === 'News') {
       reasoningSteps = dummyReasoningSteps.news;
+      // Transform search results to news article format
+      const newsArticles = searchResults.length > 0 ? searchResults.map((result: any) => ({
+        headline: result.title,
+        source: new URL(result.url).hostname.replace('www.', ''),
+        date: 'Recent',
+        summary: result.description,
+        url: result.url
+      })) : dummyNews;
       resultContent = (
         <div className="space-y-8">
           <p className="text-gray-700">
-            Here's the latest health insurance news for Florida:
+            Here's the latest health insurance news:
           </p>
           <NewsCards 
-            articles={dummyNews}
+            articles={newsArticles}
             onArticleClick={(idx) => {
-              setViewerContent(dummyFullContent.news[idx]);
-              setContentViewerOpen(true);
+              if (dummyFullContent.news[idx]) {
+                setViewerContent(dummyFullContent.news[idx]);
+                setContentViewerOpen(true);
+              }
             }}
           />
           <InlineReasoning steps={reasoningSteps} />
@@ -302,13 +418,27 @@ function App() {
       reasoningSteps = dummyReasoningSteps.faq;
       const faqKey = 'coinsurance'; // Default, could be extracted from query
       const faq = dummyFAQs[faqKey as keyof typeof dummyFAQs];
+      // For FAQ, show first result as featured card
+      const firstResult = searchResults[0] || { title: faq?.term, description: faq?.definition, snippets: [faq?.example] };
       resultContent = (
         <div className="space-y-8">
           <FAQCard
-            term={faq.term}
-            definition={faq.definition}
-            example={faq.example}
+            term={firstResult?.title || faq?.term || 'Insurance Term'}
+            definition={firstResult?.description || faq?.definition || ''}
+            example={firstResult?.snippets?.[0] || faq?.example || ''}
           />
+          {searchResults.length > 1 && (
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-gray-600">Additional Resources:</p>
+              {searchResults.slice(1, 4).map((result: any, idx: number) => (
+                <div key={idx} className="bg-white border border-gray-200 rounded-lg p-3">
+                  <a href={result.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium text-sm">
+                    {result.title}
+                  </a>
+                </div>
+              ))}
+            </div>
+          )}
           <InlineReasoning steps={reasoningSteps} />
           <QuickActionChips 
             actions={['Show example', 'Compare rates', 'See related terms']}
@@ -344,9 +474,7 @@ function App() {
       );
     } else if (intent === 'Comparison') {
       reasoningSteps = dummyReasoningSteps.comparison;
-      const plansArray = Array.isArray(data.plans) 
-        ? data.plans 
-        : dummyPlans.slice(0, 2);
+      const plansArray = dummyPlans.slice(0, 2);
       resultContent = (
         <div className="space-y-8">
           <p className="text-gray-700">
@@ -364,27 +492,73 @@ function App() {
         </div>
       );
     } else {
-      // Default: PlanInfo
+      // Default: PlanInfo - show search results if available, otherwise dummy data
       reasoningSteps = dummyReasoningSteps.planInfo;
-      const plansArray = Array.isArray(data.plans) 
-        ? data.plans 
-        : data.plans 
-          ? [data.plans] 
-          : dummyPlans.slice(0, 3);
+      const plansArray = dummyPlans.slice(0, 3);
       resultContent = (
         <div className="space-y-8">
-          <p className="text-gray-700">
-            Found {intent === 'Comparison' ? 'plans to compare' : 'plan information'} based on your criteria.
-          </p>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {plansArray.map((plan: any, idx: number) => (
-              <CompactPlanCard
-                key={plan.id}
-                plan={plan}
-                isRecommended={idx === 0}
-              />
-            ))}
-          </div>
+          {searchResults.length > 0 ? (
+            <div>
+              <p className="text-gray-700 mb-4">
+                Found {searchResults.length} insurance-related resources based on your criteria:
+              </p>
+
+              {/* Horizontally scrollable cards container */}
+              <div className="relative">
+                <div className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory scroll-smooth"
+                     style={{ scrollBehavior: 'smooth' }}>
+                  {searchResults.map((result: any, idx: number) => (
+                    <div
+                      key={idx}
+                      className="flex-shrink-0 w-96 bg-white border border-gray-200 rounded-xl p-5 hover:shadow-lg hover:border-gray-300 transition-all snap-start"
+                    >
+                      {/* Header */}
+                      <h4 className="font-semibold text-blue-600 mb-3 line-clamp-2 hover:text-blue-700">
+                        <a href={result.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                          {result.title}
+                        </a>
+                      </h4>
+
+                      {/* Description */}
+                      <p className="text-sm text-gray-600 mb-4 line-clamp-3">{result.description}</p>
+
+                      {/* Snippets */}
+                      {result.snippets && result.snippets.length > 0 && (
+                        <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-600 space-y-2 mb-4">
+                          {result.snippets.slice(0, 2).map((snippet: string, i: number) => (
+                            <p key={i} className="line-clamp-2">{snippet}</p>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Footer Link */}
+                      <div className="pt-3 border-t border-gray-100">
+                        <a
+                          href={result.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-[#2563EB] hover:text-[#1d4ed8] font-medium inline-flex items-center gap-1"
+                        >
+                          View full article →
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <p className="text-gray-700 mb-4">
+                Here are some recommended plans based on your criteria:
+              </p>
+              <div className="flex gap-4 overflow-x-auto pb-4">
+                {plansArray.map((plan: any) => (
+                  <CompactPlanCard key={plan.id} plan={plan} />
+                ))}
+              </div>
+            </div>
+          )}
           <InlineReasoning steps={reasoningSteps} />
           <QuickActionChips 
             actions={['Compare to other plans', 'See full SBC PDF', 'Find providers nearby']}
@@ -399,6 +573,12 @@ function App() {
       type: 'agent',
       content: resultContent
     }]);
+    
+    // Open evidence drawer if we have steps
+    if (evidenceStepsToShow.length > 0) {
+      setEvidenceSteps(evidenceStepsToShow);
+      setEvidenceDrawerOpen(true);
+    }
     
     setActiveMessageId(null);
   };

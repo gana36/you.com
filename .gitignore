@@ -52,7 +52,7 @@ build/
 dist/
 public/build/
 .vite/
-
+image.png
 # Documentation (not needed in repo)
 *.md
 !README.md
@@ -60,3 +60,8 @@ public/build/
 # Example files
 **/example/
 **/examples/
+
+# venv
+youcom
+/backend/test.py
+.claude
