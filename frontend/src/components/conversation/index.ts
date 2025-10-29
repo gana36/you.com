@@ -11,7 +11,8 @@ export { EntityPrompt } from './EntityPrompt';
 export { Header } from './Header';
 export { CitationBadge } from './CitationBadge';
 export { QuickActionChips } from './QuickActionChips';
-export { EvidenceDrawer } from './EvidenceDrawer';
+export { ContentViewer } from './ContentViewer';
+export { InlineReasoning } from './InlineReasoning';
 
 export type { AgentStep } from './AgentRouting';
 export type { TraceStep } from './ReasoningTrace';

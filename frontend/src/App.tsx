@@ -11,8 +11,9 @@ import { NewsCards } from './components/results/NewsCards';
 import { FAQCard } from './components/results/FAQCard';
 import { PlanComparisonTable } from './components/results/PlanComparisonTable';
 import { QuickActionChips } from './components/conversation/QuickActionChips';
-import { EvidenceDrawer } from './components/conversation/EvidenceDrawer';
-import { dummyPlans, dummyCounties } from './data/dummyData';
+import { ContentViewer } from './components/conversation/ContentViewer';
+import { InlineReasoning } from './components/conversation/InlineReasoning';
+import { dummyPlans, dummyCounties, dummyProviders, dummyNews, dummyFAQs, dummyReasoningSteps, dummyFullContent } from './data/dummyData';
 import { API_BASE_URL } from './config';
 
 interface Message {
@@ -34,8 +35,10 @@ function App() {
   const [collectedEntities, setCollectedEntities] = useState<Record<string, any>>({});
   const [currentEntityIndex, setCurrentEntityIndex] = useState(0);
   const [missingEntities, setMissingEntities] = useState<string[]>([]);
+  const [contentViewerOpen, setContentViewerOpen] = useState(false);
+  const [viewerContent, setViewerContent] = useState<any>(null);
   const [evidenceDrawerOpen, setEvidenceDrawerOpen] = useState(false);
-  const [evidenceSteps] = useState<any[]>([]);
+  const [evidenceSteps, setEvidenceSteps] = useState<any[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -376,111 +379,189 @@ function App() {
     setMessages(prev => prev.filter(msg => msg.id !== messageId));
 
     let resultContent: React.ReactNode;
+    let reasoningSteps: any[] = [];
+    let evidenceStepsToShow: any[] = [];
 
     // Handle different intents with specialized components
     if (intent === 'News') {
+      reasoningSteps = dummyReasoningSteps.news;
       // Transform search results to news article format
-      const newsArticles = searchResults.map((result: any) => ({
+      const newsArticles = searchResults.length > 0 ? searchResults.map((result: any) => ({
         headline: result.title,
         source: new URL(result.url).hostname.replace('www.', ''),
         date: 'Recent',
         summary: result.description,
         url: result.url
-      }));
-
+      })) : dummyNews;
       resultContent = (
         <div className="space-y-8">
           <p className="text-gray-700">
             Here's the latest health insurance news:
           </p>
-          <NewsCards articles={newsArticles} />
-          <QuickActionChips
+          <NewsCards 
+            articles={newsArticles}
+            onArticleClick={(idx) => {
+              if (dummyFullContent.news[idx]) {
+                setViewerContent(dummyFullContent.news[idx]);
+                setContentViewerOpen(true);
+              }
+            }}
+          />
+          <InlineReasoning steps={reasoningSteps} />
+          <QuickActionChips 
             actions={['Set up enrollment reminder', 'Compare plans', 'Find providers']}
             onActionClick={(action) => console.log('Action:', action)}
           />
         </div>
       );
     } else if (intent === 'FAQ') {
+      reasoningSteps = dummyReasoningSteps.faq;
+      const faqKey = 'coinsurance'; // Default, could be extracted from query
+      const faq = dummyFAQs[faqKey as keyof typeof dummyFAQs];
       // For FAQ, show first result as featured card
-      const firstResult = searchResults[0];
+      const firstResult = searchResults[0] || { title: faq?.term, description: faq?.definition, snippets: [faq?.example] };
       resultContent = (
         <div className="space-y-8">
           <FAQCard
-            term={firstResult?.title || 'Insurance Term'}
-            definition={firstResult?.description || ''}
-            example={firstResult?.snippets?.[0] || ''}
+            term={firstResult?.title || faq?.term || 'Insurance Term'}
+            definition={firstResult?.description || faq?.definition || ''}
+            example={firstResult?.snippets?.[0] || faq?.example || ''}
           />
-          <div className="space-y-3">
-            <p className="text-sm font-medium text-gray-600">Additional Resources:</p>
-            {searchResults.slice(1, 4).map((result: any, idx: number) => (
-              <div key={idx} className="bg-white border border-gray-200 rounded-lg p-3">
-                <a href={result.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium text-sm">
-                  {result.title}
-                </a>
-              </div>
-            ))}
-          </div>
-          <QuickActionChips
+          {searchResults.length > 1 && (
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-gray-600">Additional Resources:</p>
+              {searchResults.slice(1, 4).map((result: any, idx: number) => (
+                <div key={idx} className="bg-white border border-gray-200 rounded-lg p-3">
+                  <a href={result.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium text-sm">
+                    {result.title}
+                  </a>
+                </div>
+              ))}
+            </div>
+          )}
+          <InlineReasoning steps={reasoningSteps} />
+          <QuickActionChips 
             actions={['Show example', 'Compare rates', 'See related terms']}
             onActionClick={(action) => console.log('Action:', action)}
           />
         </div>
       );
-    } else {
-      // For PlanInfo and other intents, show horizontally scrollable cards
+    } else if (intent === 'ProviderNetwork') {
+      reasoningSteps = dummyReasoningSteps.provider;
+      const provider = dummyProviders[0];
       resultContent = (
         <div className="space-y-8">
-          <div>
-            <p className="text-gray-700 mb-4">
-              Found {searchResults.length} insurance-related resources based on your criteria:
-            </p>
+          <p className="text-gray-700">
+            Found provider information:
+          </p>
+          <ProviderCard
+            name={provider.name}
+            specialty={provider.specialty}
+            location={provider.location}
+            acceptingNewPatients={provider.acceptingNewPatients}
+            coveredPlans={provider.coveredPlans}
+            onClick={() => {
+              setViewerContent(dummyFullContent.providers[0]);
+              setContentViewerOpen(true);
+            }}
+          />
+          <InlineReasoning steps={reasoningSteps} />
+          <QuickActionChips 
+            actions={['See full provider directory', 'Compare plan coverage', 'Book appointment']}
+            onActionClick={(action) => console.log('Action:', action)}
+          />
+        </div>
+      );
+    } else if (intent === 'Comparison') {
+      reasoningSteps = dummyReasoningSteps.comparison;
+      const plansArray = dummyPlans.slice(0, 2);
+      resultContent = (
+        <div className="space-y-8">
+          <p className="text-gray-700">
+            Here's a detailed comparison of the plans:
+          </p>
+          <PlanComparisonTable 
+            plans={plansArray}
+            recommendedPlanId={plansArray[0]?.id}
+          />
+          <InlineReasoning steps={reasoningSteps} />
+          <QuickActionChips 
+            actions={['Export comparison', 'Add another plan', 'See provider networks']}
+            onActionClick={(action) => console.log('Action:', action)}
+          />
+        </div>
+      );
+    } else {
+      // Default: PlanInfo - show search results if available, otherwise dummy data
+      reasoningSteps = dummyReasoningSteps.planInfo;
+      const plansArray = dummyPlans.slice(0, 3);
+      resultContent = (
+        <div className="space-y-8">
+          {searchResults.length > 0 ? (
+            <div>
+              <p className="text-gray-700 mb-4">
+                Found {searchResults.length} insurance-related resources based on your criteria:
+              </p>
 
-            {/* Horizontally scrollable cards container */}
-            <div className="relative">
-              <div className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory scroll-smooth"
-                   style={{ scrollBehavior: 'smooth' }}>
-                {searchResults.map((result: any, idx: number) => (
-                  <div
-                    key={idx}
-                    className="flex-shrink-0 w-96 bg-white border border-gray-200 rounded-xl p-5 hover:shadow-lg hover:border-gray-300 transition-all snap-start"
-                  >
-                    {/* Header */}
-                    <h4 className="font-semibold text-blue-600 mb-3 line-clamp-2 hover:text-blue-700">
-                      <a href={result.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
-                        {result.title}
-                      </a>
-                    </h4>
+              {/* Horizontally scrollable cards container */}
+              <div className="relative">
+                <div className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory scroll-smooth"
+                     style={{ scrollBehavior: 'smooth' }}>
+                  {searchResults.map((result: any, idx: number) => (
+                    <div
+                      key={idx}
+                      className="flex-shrink-0 w-96 bg-white border border-gray-200 rounded-xl p-5 hover:shadow-lg hover:border-gray-300 transition-all snap-start"
+                    >
+                      {/* Header */}
+                      <h4 className="font-semibold text-blue-600 mb-3 line-clamp-2 hover:text-blue-700">
+                        <a href={result.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                          {result.title}
+                        </a>
+                      </h4>
 
-                    {/* Description */}
-                    <p className="text-sm text-gray-600 mb-4 line-clamp-3">{result.description}</p>
+                      {/* Description */}
+                      <p className="text-sm text-gray-600 mb-4 line-clamp-3">{result.description}</p>
 
-                    {/* Snippets */}
-                    {result.snippets && result.snippets.length > 0 && (
-                      <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-600 space-y-2 mb-4">
-                        {result.snippets.slice(0, 2).map((snippet: string, i: number) => (
-                          <p key={i} className="line-clamp-2">{snippet}</p>
-                        ))}
+                      {/* Snippets */}
+                      {result.snippets && result.snippets.length > 0 && (
+                        <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-600 space-y-2 mb-4">
+                          {result.snippets.slice(0, 2).map((snippet: string, i: number) => (
+                            <p key={i} className="line-clamp-2">{snippet}</p>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Footer Link */}
+                      <div className="pt-3 border-t border-gray-100">
+                        <a
+                          href={result.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-[#2563EB] hover:text-[#1d4ed8] font-medium inline-flex items-center gap-1"
+                        >
+                          View full article →
+                        </a>
                       </div>
-                    )}
-
-                    {/* Footer Link */}
-                    <div className="pt-3 border-t border-gray-100">
-                      <a
-                        href={result.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-[#2563EB] hover:text-[#1d4ed8] font-medium inline-flex items-center gap-1"
-                      >
-                        View full article →
-                      </a>
                     </div>
-                  </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <p className="text-gray-700 mb-4">
+                Here are some recommended plans based on your criteria:
+              </p>
+              <div className="flex gap-4 overflow-x-auto pb-4">
+                {plansArray.map((plan: any) => (
+                  <CompactPlanCard key={plan.id} plan={plan} />
                 ))}
               </div>
             </div>
-          </div>
-          <QuickActionChips
-            actions={['Refine search', 'Compare plans', 'Find providers']}
+          )}
+          <InlineReasoning steps={reasoningSteps} />
+          <QuickActionChips 
+            actions={['Compare to other plans', 'See full SBC PDF', 'Find providers nearby']}
             onActionClick={(action) => console.log('Action:', action)}
           />
         </div>
@@ -492,7 +573,13 @@ function App() {
       type: 'agent',
       content: resultContent
     }]);
-
+    
+    // Open evidence drawer if we have steps
+    if (evidenceStepsToShow.length > 0) {
+      setEvidenceSteps(evidenceStepsToShow);
+      setEvidenceDrawerOpen(true);
+    }
+    
     setActiveMessageId(null);
   };
 
@@ -513,11 +600,11 @@ function App() {
         <ChatInput onSend={handleSendMessage} disabled={activeMessageId !== null} />
       </div>
       
-      {/* Evidence Drawer */}
-      <EvidenceDrawer
-        isOpen={evidenceDrawerOpen}
-        onClose={() => setEvidenceDrawerOpen(false)}
-        steps={evidenceSteps}
+      {/* Content Viewer */}
+      <ContentViewer
+        isOpen={contentViewerOpen}
+        onClose={() => setContentViewerOpen(false)}
+        content={viewerContent}
       />
     </div>
   );

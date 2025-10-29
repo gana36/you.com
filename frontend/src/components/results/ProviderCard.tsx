@@ -9,6 +9,7 @@ interface ProviderCardProps {
   acceptingNewPatients: boolean;
   coveredPlans: string[];
   initials?: string;
+  onClick?: () => void;
 }
 
 export const ProviderCard: React.FC<ProviderCardProps> = ({
@@ -17,7 +18,8 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
   location,
   acceptingNewPatients,
   coveredPlans,
-  initials
+  initials,
+  onClick
 }) => {
   const getInitials = () => {
     if (initials) return initials;
@@ -25,7 +27,10 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 hover:shadow-md transition-shadow">
+    <button
+      onClick={onClick}
+      className="w-full bg-white border border-gray-200 rounded-xl shadow-sm p-6 hover:shadow-md hover:border-[#2563EB] transition-all text-left"
+    >
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-start gap-3 flex-1">
           {/* Avatar circle */}
@@ -71,6 +76,6 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
           </span>
         ))}
       </div>
-    </div>
+    </button>
   );
 };
