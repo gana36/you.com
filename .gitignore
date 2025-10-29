@@ -63,3 +63,5 @@ image.png
 
 # venv
 youcom
+/backend/test.py
+.claude
