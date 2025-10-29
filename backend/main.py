@@ -9,11 +9,15 @@ import uuid
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import requests
+from config.intent_manager import get_config_manager
 
 # Load environment variables from .env file
 load_dotenv()
 
 app = FastAPI(title="Insurance Assistant API", version="2.0.0")
+
+# Initialize dynamic configuration manager
+config_manager = get_config_manager()
 
 # Add CORS middleware
 app.add_middleware(
@@ -31,45 +35,12 @@ SESSION_TIMEOUT = timedelta(hours=1)
 # Configure Gemini API
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
-# Define valid intents
-VALID_INTENTS = [
-    "PlanInfo",
-    "CoverageDetail",
-    "ProviderNetwork",
-    "Comparison",
-    "FAQ",
-    "News"
-]
+# Get valid intents and entities from configuration (dynamic)
+VALID_INTENTS = config_manager.get_valid_intents()
+VALID_ENTITIES = config_manager.get_valid_entities()
 
-# Define valid entity types
-VALID_ENTITIES = [
-    "plan_name",
-    "insurer",
-    "county",
-    "year",
-    "age",
-    "coverage_item",
-    "subtype",
-    "provider_name",
-    "specialty",
-    "features",
-    "topic",
-    "state",
-    "income",
-    "family_size",
-    "zip_code"
-]
-
-# Define required entities for insurance search (varies by intent)
-# ORDER MATTERS: ask for entities in logical order, not arbitrary order
-REQUIRED_ENTITIES_BY_INTENT = {
-    "PlanInfo": ["plan_name", "insurer", "year", "county", "age"],
-    "CoverageDetail": ["plan_name", "insurer", "year", "coverage_item", "subtype", "county"],  # Reordered: coverage_item before county
-    "ProviderNetwork": ["provider_name", "specialty", "plan_name", "insurer", "county"],  # Reordered: name/specialty first
-    "Comparison": ["plan_name", "insurer", "year", "county"],  # age and features are optional
-    "FAQ": ["topic"],  # state/local context is optional
-    "News": ["topic", "year"]  # insurer/plan_name and state are optional but at least one should be provided
-}
+# Get required entities mapping (now dynamic, loaded from config)
+REQUIRED_ENTITIES_BY_INTENT = config_manager.get_all_required_entities_by_intent()
 
 
 class QueryRequest(BaseModel):
@@ -177,12 +148,48 @@ def get_or_create_session(session_id: Optional[str] = None) -> tuple[str, Dict[s
             "collected_entities": {},
             "conversation_history": [],
             "intent": None,
-            "stage": "initial"  # initial, collecting, searching, complete
+            "stage": "initial",  # initial, collecting, confirming_entities, searching, complete
+            "pending_entity_confirmation": None
         }
 
     # Update last activity
     sessions[session_id]["last_activity"] = datetime.now()
     return session_id, sessions[session_id]
+
+
+def get_article_content(url: str) -> Optional[str]:
+    """Fetch full article content using You.com Contents API."""
+    you_api_key = os.getenv("you_api")
+    
+    if not you_api_key:
+        return None
+    
+    contents_url = "https://api.ydc-index.io/v1/contents"
+    
+    headers = {
+        "X-API-Key": you_api_key,
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "url": url,
+        "content_types": ["markdown"]
+    }
+    
+    try:
+        print(f"DEBUG: Fetching article content for: {url}")
+        response = requests.post(contents_url, headers=headers, json=payload, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+        
+        # Extract markdown content
+        markdown_content = data.get("markdown", "")
+        print(f"DEBUG: Retrieved {len(markdown_content)} characters of content")
+        return markdown_content if markdown_content else None
+        
+    except Exception as e:
+        print(f"DEBUG: Error fetching article content: {str(e)}")
+        return None
 
 
 def search_with_you_api(query: str, entities: Dict[str, Any], intent: str = "PlanInfo") -> List[Dict[str, Any]]:
@@ -212,10 +219,13 @@ def search_with_you_api(query: str, entities: Dict[str, Any], intent: str = "Pla
     }
 
     params = {
-        "query": enhanced_query
+        "query": enhanced_query,
+        "count": 10  # Number of results
     }
 
     try:
+        print(f"DEBUG: Calling You.com API: {url}")
+        print(f"DEBUG: Query: {enhanced_query}")
         response = requests.get(url, headers=headers, params=params, timeout=10)
         response.raise_for_status()
         data = response.json()
@@ -225,13 +235,17 @@ def search_with_you_api(query: str, entities: Dict[str, Any], intent: str = "Pla
 
         # You.com API returns: {'results': {'web': [...], 'news': [...]}, 'metadata': {...}}
         web_results = data.get("results", {}).get("web", [])
+        print(f"DEBUG: You.com returned {len(web_results)} web results")
 
         for hit in web_results[:10]:
             results.append({
                 "title": hit.get("title", ""),
                 "description": hit.get("description", ""),
                 "url": hit.get("url", ""),
-                "snippets": hit.get("snippets", [])
+                "snippets": hit.get("snippets", []),
+                "thumbnail_url": hit.get("thumbnail_url"),
+                "page_age": hit.get("page_age"),
+                "authors": hit.get("authors", [])
             })
 
         return results
@@ -240,10 +254,24 @@ def search_with_you_api(query: str, entities: Dict[str, Any], intent: str = "Pla
         raise HTTPException(status_code=500, detail=f"You.com API error: {str(e)}")
 
 
-def determine_next_question(collected_entities: Dict[str, Any], intent: str) -> Optional[str]:
-    """Determine what information to ask for next based on intent."""
-    # Get required entities for this intent
-    required = REQUIRED_ENTITIES_BY_INTENT.get(intent, [])
+def determine_next_question(
+    collected_entities: Dict[str, Any], 
+    intent: str,
+    conversation_context: Optional[Dict[str, Any]] = None,
+    use_dynamic_questions: bool = False
+) -> Optional[str]:
+    """
+    Determine what information to ask for next based on intent.
+    Now uses dynamic configuration instead of hardcoded values.
+    
+    Args:
+        collected_entities: Entities already collected
+        intent: Current intent
+        conversation_context: Optional conversation context for dynamic question generation
+        use_dynamic_questions: Whether to use LLM for dynamic question generation
+    """
+    # Get required entities for this intent from config
+    required = config_manager.get_required_entities(intent)
 
     if not required:
         return None  # No entities needed for this intent
@@ -259,26 +287,23 @@ def determine_next_question(collected_entities: Dict[str, Any], intent: str) -> 
 
     # Ask for entities in order
     next_entity = missing[0]
-
-    questions = {
-        "age": "To help you find the best insurance options, could you please tell me your age?",
-        "income": "Great! Now, could you share your approximate annual income? This helps us find plans that fit your budget.",
-        "county": "Perfect! Which county do you live in? This will help us find plans available in your area.",
-        "plan_name": "Which insurance plan are you interested in? (e.g., Molina Silver 1 HMO, Aetna Gold)",
-        "insurer": "Which insurance company or insurer are you asking about? (e.g., Molina, Aetna, UnitedHealthcare)",
-        "year": "Which year are you interested in? (e.g., 2024, 2025)",
-        "coverage_item": "Which coverage item would you like to know about? (e.g., dental, vision, prescription drugs)",
-        "subtype": "Could you specify the subtype or specific aspect of this coverage you're interested in?",
-        "provider_name": "Which doctor or healthcare provider are you asking about?",
-        "specialty": "What medical specialty are you looking for? (e.g., cardiology, pediatrics, dermatology)",
-        "features": "Which features or aspects would you like to compare? (e.g., premiums, deductibles, coverage)",
-        "topic": "What specific topic or question do you have about health insurance?",
-        "state": "Which state are you located in?",
-        "family_size": "How many people will be covered under this insurance plan?",
-        "zip_code": "What's your zip code?"
+    
+    # Build context for dynamic question generation
+    context = {
+        "intent": intent,
+        "collected_entities": collected_entities,
+        "conversation_history": conversation_context.get("conversation_history", []) if conversation_context else []
     }
-
-    return questions.get(next_entity, f"Could you please provide: {next_entity}?")
+    
+    # Get question from config manager (with optional LLM generation)
+    llm_model = genai.GenerativeModel('gemini-2.0-flash-exp') if use_dynamic_questions else None
+    
+    return config_manager.get_entity_question(
+        entity=next_entity,
+        context=context,
+        use_llm=use_dynamic_questions,
+        llm_model=llm_model
+    )
 
 
 def generate_acknowledgment(entity_name: str, entity_value: Any, collected_count: int) -> str:
@@ -435,6 +460,327 @@ async def health_check():
     }
 
 
+@app.get("/config")
+async def get_configuration():
+    """
+    Get the current intent and entity configuration.
+    Returns frontend-friendly configuration.
+    """
+    try:
+        frontend_config = config_manager.export_config_for_frontend()
+        return {
+            "status": "success",
+            "config": frontend_config
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error loading configuration: {str(e)}")
+
+
+@app.post("/config/reload")
+async def reload_configuration():
+    """
+    Reload configuration from file.
+    Useful for updating configuration without restarting the server.
+    """
+    try:
+        config_manager.reload_config()
+        
+        # Update global variables
+        global VALID_INTENTS, VALID_ENTITIES, REQUIRED_ENTITIES_BY_INTENT
+        VALID_INTENTS = config_manager.get_valid_intents()
+        VALID_ENTITIES = config_manager.get_valid_entities()
+        REQUIRED_ENTITIES_BY_INTENT = config_manager.get_all_required_entities_by_intent()
+        
+        return {
+            "status": "success",
+            "message": "Configuration reloaded successfully",
+            "intents": VALID_INTENTS,
+            "entities": VALID_ENTITIES
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error reloading configuration: {str(e)}")
+
+
+@app.post("/brief-faq")
+async def get_brief_faq_answer(request: dict):
+    """
+    Get a clean, brief answer for FAQ card display (1-2 sentences).
+    
+    Args:
+        request: Dictionary with topic and search results
+        
+    Returns:
+        Clean brief definition for card display
+    """
+    topic = request.get("topic", "")
+    search_results = request.get("search_results", [])
+    
+    if not topic:
+        raise HTTPException(status_code=400, detail="Topic is required")
+    
+    try:
+        # Combine top search results
+        context_parts = []
+        for result in search_results[:3]:
+            context_parts.append(result.get("description", ""))
+            if result.get("snippets"):
+                context_parts.extend(result["snippets"][:2])
+        
+        combined_context = "\n".join(filter(None, context_parts))
+        
+        # Use Gemini to extract clean brief answer
+        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        
+        prompt = f"""Based on these search results about "{topic}", write a clean, brief definition (2-3 sentences maximum).
+
+Search results:
+{combined_context}
+
+Requirements:
+- Remove any marketing language or calls to action
+- Remove meta descriptions like "Learn about..." 
+- Just provide the core definition/explanation
+- Make it clear and easy to understand
+- 2-3 sentences maximum
+
+Return ONLY the clean definition text, nothing else.
+"""
+        
+        print(f"DEBUG: Getting brief FAQ answer for: {topic}")
+        response = model.generate_content(prompt)
+        brief_answer = response.text.strip()
+        
+        # Clean up any quotes or extra formatting
+        brief_answer = brief_answer.strip('"').strip("'").strip()
+        
+        print(f"DEBUG: Brief answer: {brief_answer[:100]}...")
+        
+        return {
+            "status": "success",
+            "brief_answer": brief_answer
+        }
+        
+    except Exception as e:
+        print(f"DEBUG: Error getting brief FAQ: {str(e)}")
+        # Fallback to first result description
+        fallback = search_results[0].get("description", "") if search_results else ""
+        return {
+            "status": "partial",
+            "brief_answer": fallback
+        }
+
+
+@app.post("/synthesize-faq")
+async def synthesize_faq_answer(request: dict):
+    """
+    Use Gemini to synthesize a comprehensive FAQ answer from search results.
+    
+    Args:
+        request: Dictionary with topic and search results
+        
+    Returns:
+        Comprehensive FAQ answer with definition, explanation, examples, and sources
+    """
+    topic = request.get("topic", "")
+    search_results = request.get("search_results", [])
+    
+    if not topic:
+        raise HTTPException(status_code=400, detail="Topic is required")
+    
+    try:
+        # Combine search results into context
+        context_parts = []
+        sources = []
+        
+        for idx, result in enumerate(search_results[:5]):  # Use top 5 results
+            title = result.get("title", "")
+            description = result.get("description", "")
+            snippets = result.get("snippets", [])
+            url = result.get("url", "")
+            
+            context_parts.append(f"Source {idx + 1}: {title}")
+            context_parts.append(f"URL: {url}")
+            context_parts.append(f"Summary: {description}")
+            if snippets:
+                context_parts.append("Key excerpts:")
+                for snippet in snippets[:3]:
+                    context_parts.append(f"  - {snippet}")
+            context_parts.append("")
+            
+            sources.append({
+                "title": title,
+                "url": url,
+                "source": result.get("name", "Web")
+            })
+        
+        combined_context = "\n".join(context_parts)
+        
+        # Use Gemini to create comprehensive FAQ answer
+        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        
+        prompt = f"""You are a health insurance expert. Based on the search results below, create a comprehensive, easy-to-understand answer about "{topic}".
+
+Search Results:
+{combined_context}
+
+Please provide:
+1. A clear, concise definition (1-2 sentences)
+2. A detailed explanation (2-3 paragraphs) that helps someone understand the concept thoroughly
+3. A real-world example that illustrates how it works
+4. 3-4 key points or important things to know
+
+Format your response as JSON:
+{{
+  "definition": "Clear one-sentence definition...",
+  "explanation": "Detailed explanation with paragraphs...",
+  "example": "Real-world example showing how this works in practice...",
+  "key_points": [
+    "Important point 1",
+    "Important point 2",
+    "Important point 3"
+  ],
+  "related_topics": ["Related topic 1", "Related topic 2"]
+}}
+
+Make it conversational, helpful, and avoid jargon. Focus on practical understanding.
+"""
+        
+        print(f"DEBUG: Synthesizing FAQ answer for: {topic}")
+        response = model.generate_content(prompt)
+        response_text = response.text.strip()
+        
+        # Parse JSON response
+        if response_text.startswith("```"):
+            response_text = response_text.split("```")[1]
+            if response_text.startswith("json"):
+                response_text = response_text[4:]
+        
+        faq_data = json.loads(response_text.strip())
+        
+        print(f"DEBUG: Successfully synthesized FAQ answer")
+        
+        return {
+            "status": "success",
+            "topic": topic,
+            "definition": faq_data.get("definition", ""),
+            "explanation": faq_data.get("explanation", ""),
+            "example": faq_data.get("example", ""),
+            "key_points": faq_data.get("key_points", []),
+            "related_topics": faq_data.get("related_topics", []),
+            "sources": sources
+        }
+        
+    except json.JSONDecodeError as e:
+        print(f"DEBUG: JSON parse error: {str(e)}")
+        # Fallback
+        return {
+            "status": "partial",
+            "topic": topic,
+            "definition": search_results[0].get("description", "") if search_results else "",
+            "explanation": "",
+            "example": "",
+            "key_points": [],
+            "related_topics": [],
+            "sources": sources
+        }
+    except Exception as e:
+        print(f"DEBUG: Error synthesizing FAQ: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error synthesizing FAQ: {str(e)}")
+
+
+@app.post("/enhance-article")
+async def enhance_article_content(request: dict):
+    """
+    Use Gemini to enhance and summarize article information.
+    Takes existing data (title, description, snippets) and creates a comprehensive summary.
+    
+    Args:
+        request: Dictionary with article data
+        
+    Returns:
+        Enhanced article content with summary, key points, and insights
+    """
+    title = request.get("title", "")
+    description = request.get("description", "")
+    snippets = request.get("snippets", [])
+    source = request.get("source", "")
+    
+    if not title and not description:
+        raise HTTPException(status_code=400, detail="Title or description required")
+    
+    try:
+        # Combine all available information
+        article_info = f"""
+Title: {title}
+
+Description: {description}
+
+Source: {source}
+
+Key Excerpts:
+{chr(10).join(f'- {snippet}' for snippet in snippets if snippet)}
+"""
+        
+        # Use Gemini to create enhanced content
+        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        
+        prompt = f"""Based on the following article information, create a comprehensive, well-structured summary.
+
+{article_info}
+
+Please provide:
+1. A concise but informative summary (2-3 paragraphs) that captures the main points
+2. Key takeaways (3-5 bullet points)
+3. Important insights or implications
+
+Format your response as JSON:
+{{
+  "summary": "comprehensive summary text...",
+  "key_points": ["point 1", "point 2", "point 3"],
+  "insights": "additional insights or context..."
+}}
+
+Make it informative, well-written, and easy to understand. Focus on the most important information.
+"""
+        
+        print(f"DEBUG: Enhancing article with Gemini: {title[:50]}...")
+        response = model.generate_content(prompt)
+        response_text = response.text.strip()
+        
+        # Parse JSON response
+        # Remove markdown code blocks if present
+        if response_text.startswith("```"):
+            response_text = response_text.split("```")[1]
+            if response_text.startswith("json"):
+                response_text = response_text[4:]
+        
+        enhanced_data = json.loads(response_text.strip())
+        
+        print(f"DEBUG: Successfully enhanced article")
+        
+        return {
+            "status": "success",
+            "summary": enhanced_data.get("summary", ""),
+            "key_points": enhanced_data.get("key_points", []),
+            "insights": enhanced_data.get("insights", ""),
+            "original_snippets": snippets
+        }
+        
+    except json.JSONDecodeError as e:
+        print(f"DEBUG: JSON parse error: {str(e)}")
+        # Fallback: return original content
+        return {
+            "status": "partial",
+            "summary": description,
+            "key_points": snippets[:3] if snippets else [],
+            "insights": "",
+            "original_snippets": snippets
+        }
+    except Exception as e:
+        print(f"DEBUG: Error enhancing article: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error enhancing article: {str(e)}")
+
+
 @app.post("/chat", response_model=ConversationResponse)
 async def chat(request: ConversationRequest):
     """
@@ -466,9 +812,12 @@ async def chat(request: ConversationRequest):
     # If stage is "collecting", we're still answering questions for the same intent, so keep entities/intent
     if session["stage"] == "complete":
         print(f"DEBUG: Previous query complete, clearing entities for new query")
+        print(f"DEBUG: Old entities: {session['collected_entities']}")
+        print(f"DEBUG: Old intent: {session['intent']}")
         session["collected_entities"] = {}
         session["intent"] = None
         session["stage"] = "initial"
+        print(f"DEBUG: Entities cleared, ready for new query")
     elif session["stage"] == "initial":
         # For truly new sessions, just ensure stage is initial
         pass
@@ -528,10 +877,14 @@ Then extract relevant entities ONLY if they are EXPLICITLY mentioned:
 - provider_name: Name of doctor or hospital (e.g., "Dr. Smith", "Memorial Hospital")
 - specialty: Medical specialty (e.g., "cardiology", "pediatrics", "dermatology")
 - features: Plan features to compare (e.g., "premiums", "deductibles", "copays")
-- topic: Topic or subject matter (e.g., "open enrollment", "subsidies", "qualifying life events")
+- topic: Topic or subject matter for FAQ or News. 
+  * For FAQ: Extract ONLY the concept name, not question words. "what is coinsurance?" → "coinsurance", "explain deductible" → "deductible"
+  * For News: Extract the news topic/focus. "Florida health insurance news" → "health insurance", "ACA subsidy updates" → "ACA subsidies", "Medicare changes" → "Medicare"
+  * Examples: "coinsurance", "deductible", "copay", "HMO", "PPO", "open enrollment", "subsidies", "Medicare", "Medicaid"
 - state: State name (e.g., "Florida", "Texas", "California")
 - income: Annual income (number only, extract just the number without $ or commas)
 
+IMPORTANT FOR FAQ: Extract ONLY the topic name, NOT question words like "what is", "explain", "tell me about", etc!
 IMPORTANT: Do NOT extract entities if user is just asking about news or general information without specific details!
 
 Return JSON only:
@@ -562,15 +915,58 @@ Return JSON only:
 
         # DEBUG: Log intent and entities
         print(f"\n=== DEBUG: Intent Detection ===")
+        print(f"User query: {request.query}")
         print(f"Detected intent: {intent}")
         print(f"Extracted entities: {new_entities}")
         print(f"Current session intent: {session['intent']}")
         print(f"Current session stage: {session['stage']}")
+        print(f"Current collected entities BEFORE merge: {session['collected_entities']}")
 
         # Only update intent if we're not already collecting for an intent
         # This preserves intent when user is answering entity collection questions
         if session["stage"] != "collecting" or not session["intent"]:
+            # If intent changed from previous and we have old entities, ask user if they want to keep them
+            if session["intent"] and session["intent"] != intent and session["collected_entities"]:
+                print(f"DEBUG: Intent changed from '{session['intent']}' to '{intent}'")
+                print(f"DEBUG: Found existing entities: {session['collected_entities']}")
+                
+                # Check if any of the old entities are relevant to the new intent
+                required_for_new_intent = REQUIRED_ENTITIES_BY_INTENT.get(intent, [])
+                reusable_entities = {k: v for k, v in session["collected_entities"].items() if k in required_for_new_intent}
+                
+                if reusable_entities:
+                    print(f"DEBUG: Found reusable entities for new intent: {reusable_entities}")
+                    
+                    # Create a friendly confirmation message
+                    entity_descriptions = []
+                    for key, value in reusable_entities.items():
+                        entity_descriptions.append(f"{key.replace('_', ' ')}: '{value}'")
+                    
+                    confirmation_msg = f"I see you were asking about {', '.join(entity_descriptions)}. Would you like me to use this for your {intent.lower()} query, or would you prefer to start fresh?"
+                    
+                    # Store in a special flag so we can handle the response
+                    session["pending_entity_confirmation"] = {
+                        "new_intent": intent,
+                        "reusable_entities": reusable_entities,
+                        "confirmation_msg": confirmation_msg
+                    }
+                    session["stage"] = "confirming_entities"
+                    
+                    return ConversationResponse(
+                        session_id=session_id,
+                        response=confirmation_msg,
+                        requires_input=True,
+                        next_question=confirmation_msg,
+                        collected_entities=session["collected_entities"],
+                        status="collecting"
+                    )
+                else:
+                    # No reusable entities, just clear and continue
+                    print(f"DEBUG: No reusable entities found, clearing old entities")
+                    session["collected_entities"] = {}
+            
             session["intent"] = intent
+            print(f"DEBUG: Updated session intent to: {intent}")
         else:
             print(f"DEBUG: Keeping existing intent '{session['intent']}' (ignoring detected '{intent}' during collection)")
 
@@ -578,7 +974,10 @@ Return JSON only:
         # Also handle entity mapping for different intents
         for key, value in new_entities.items():
             if key in VALID_ENTITIES and value:
+                print(f"DEBUG: Setting entity {key} = {value}")
                 session["collected_entities"][key] = value
+        
+        print(f"DEBUG: Collected entities AFTER merge: {session['collected_entities']}")
 
         # Special mapping: for CoverageDetail, "features" should map to "coverage_item"
         if session["intent"] == "CoverageDetail" and "features" in new_entities and "coverage_item" not in new_entities:
@@ -616,10 +1015,21 @@ Return JSON only:
                     )
 
             # Ask for next missing entity
-            next_question = determine_next_question(session["collected_entities"], intent)
+            # Pass conversation context for dynamic contextual question generation
+            print(f"DEBUG: Checking what's still missing...")
+            print(f"DEBUG: Intent: {intent}")
+            print(f"DEBUG: Collected entities: {session['collected_entities']}")
+            print(f"DEBUG: Required for this intent: {config_manager.get_required_entities(intent)}")
+            
+            next_question = determine_next_question(
+                collected_entities=session["collected_entities"],
+                intent=intent,
+                conversation_context=session,
+                use_dynamic_questions=True  # Enabled for contextual, agentic questions
+            )
 
             # DEBUG: Log question generation
-            print(f"Next question: {next_question}")
+            print(f"DEBUG: Next question determined: {next_question}")
 
             if response_text and next_question:
                 full_response = f"{response_text}\n\n{next_question}"
@@ -666,7 +1076,9 @@ Return JSON only:
 
             # Perform You.com search
             try:
+                print(f"DEBUG: Calling You.com API with query='{original_query}', intent='{intent}'")
                 search_results = search_with_you_api(original_query, session["collected_entities"], intent)
+                print(f"DEBUG: You.com API returned {len(search_results)} results")
                 session["stage"] = "complete"
 
                 # Generate summary response based on intent

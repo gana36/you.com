@@ -15,6 +15,7 @@ import { ContentViewer } from './components/conversation/ContentViewer';
 import { InlineReasoning } from './components/conversation/InlineReasoning';
 import { dummyPlans, dummyCounties, dummyProviders, dummyNews, dummyFAQs, dummyReasoningSteps, dummyFullContent } from './data/dummyData';
 import { API_BASE_URL } from './config';
+import { configService } from './services/configService';
 
 interface Message {
   id: string;
@@ -141,26 +142,42 @@ function App() {
             content: <div className="text-gray-700">{data.response}</div>
           }]);
 
-          // Determine all possible entities that might be missing
-          const allPossibleEntities = ['plan_name', 'insurer', 'year', 'county', 'age', 'income',
-                                        'coverage_item', 'subtype', 'provider_name', 'specialty',
-                                        'features', 'topic', 'state'];
-          const missing = allPossibleEntities.filter(e => !data.collected_entities[e]);
+          // Fetch ONLY the required entities for THIS specific intent
+          configService.getRequiredEntities(intent).then(requiredForIntent => {
+            const missing = requiredForIntent.filter(e => !data.collected_entities[e]);
+            setMissingEntities(missing);
 
-          setMissingEntities(missing);
-
-          // Start collecting the first missing entity
-          if (missing.length > 0) {
-            startEntityCollection(thinkingId, intent, missing, data.session_id);
-          }
-        } else if (data.status === 'complete' || data.search_results) {
-          // Backend has completed gathering info and has results
-          console.log('Backend has completed, showing results...');
+            // Start collecting the first missing entity
+            if (missing.length > 0) {
+              startEntityCollection(thinkingId, intent, missing, data.session_id);
+            }
+          }).catch(error => {
+            console.error('Error fetching entity configuration:', error);
+            // Fallback: trust backend's determination
+            // Backend already calculated what's missing, so we don't add more
+            console.log('Using backend-provided missing entities');
+          });
+        } else if (data.status === 'complete' && data.search_results) {
+          // Backend has completed AND returned search results - use them directly!
+          console.log('✅ Backend returned search results:', data.search_results);
+          console.log('✅ Search results count:', data.search_results.length);
+          console.log('✅ Intent:', intent);
+          updateThinkingStep(thinkingId, 'collection', 'complete');
+          updateThinkingStep(thinkingId, 'query', 'complete');
+          updateThinkingStep(thinkingId, 'search', 'complete');
+          
+          // Show results immediately without another API call
+          showResultsFromSearch(thinkingId, intent, data.search_results, data.collected_entities);
+        } else if (data.status === 'complete') {
+          // Backend completed but no results yet - fetch them
+          console.log('⚠️ Backend completed but NO search_results in response');
+          console.log('⚠️ Full response data:', data);
           updateThinkingStep(thinkingId, 'collection', 'complete');
           performSearch(thinkingId, intent, data.session_id);
         } else {
-          // No collection needed, proceed directly to search
-          console.log('No entity collection needed, proceeding to search...');
+          // No collection needed, proceed to search
+          console.log('ℹ️ No entity collection needed, proceeding to search...');
+          console.log('ℹ️ Data status:', data.status);
           updateThinkingStep(thinkingId, 'collection', 'complete');
           performSearch(thinkingId, intent, data.session_id);
         }
@@ -277,41 +294,54 @@ function App() {
       setCollectedEntities(data.collected_entities);
 
       // Check if backend needs more info or is ready to search
-      if (data.requires_input && data.next_question) {
-        // Backend wants more info - show the acknowledgment/question
+      if (data.requires_input) {
+        // Backend explicitly says it needs more input - TRUST IT!
+        console.log('Backend requires more input, waiting for next entity...');
+        
+        // Show the backend's response/question
         setMessages(prev => [...prev, {
           id: messageId + '-ack-' + Date.now(),
           type: 'agent',
           content: <div className="text-gray-700">{data.response}</div>
         }]);
 
-        // Determine what's still missing based on backend response
-        const allPossibleEntities = ['plan_name', 'insurer', 'year', 'county', 'age', 'income',
-                                      'coverage_item', 'subtype', 'provider_name', 'specialty',
-                                      'features', 'topic', 'state'];
-        const stillMissing = allPossibleEntities.filter(e => !data.collected_entities[e]);
+        // Determine what's still missing - check only required entities for THIS intent
+        configService.getRequiredEntities(intent).then(requiredForIntent => {
+          const stillMissing = requiredForIntent.filter(e => !data.collected_entities[e]);
+          
+          console.log('Required for intent:', requiredForIntent);
+          console.log('Still missing:', stillMissing);
 
-        if (stillMissing.length > 0) {
-          setMissingEntities(stillMissing);
-          // Ask for next entity
-          setTimeout(() => {
-            setMessages(prev => [...prev, {
-              id: messageId + '-collect',
-              type: 'agent',
-              content: (
-                <ProgressiveEntityCollector
-                  entityType={stillMissing[0]}
-                  onCollect={(value) => handleEntityValue(messageId, intent, stillMissing[0], value, session)}
-                  plans={dummyPlans}
+          if (stillMissing.length > 0) {
+            setMissingEntities(stillMissing);
+            // Ask for next entity
+            setTimeout(() => {
+              setMessages(prev => [...prev, {
+                id: messageId + '-collect',
+                type: 'agent',
+                content: (
+                  <ProgressiveEntityCollector
+                    entityType={stillMissing[0]}
+                    onCollect={(value) => handleEntityValue(messageId, intent, stillMissing[0], value, session)}
+                    plans={dummyPlans}
                   counties={dummyCounties}
                 />
               )
             }]);
           }, 500);
-        }
+          } else {
+            // Frontend thinks we have everything, but backend says requires_input
+            // This means backend knows about something we don't - trust the backend!
+            console.warn('⚠️ Frontend thinks all entities collected but backend says requires_input!');
+            console.warn('⚠️ Trusting backend - NOT calling performSearch');
+            // Don't call performSearch - wait for backend to tell us it's complete
+          }
+        }).catch(error => {
+          console.error('Error fetching required entities:', error);
+        });
       } else {
-        // Backend is done collecting, perform search
-        console.log('All entities collected! Performing search...');
+        // Backend is done collecting (requires_input = false), perform search
+        console.log('Backend says no more input needed! Performing search...');
         updateThinkingStep(messageId, 'collection', 'complete');
         performSearch(messageId, intent, session);
       }
@@ -321,6 +351,7 @@ function App() {
   };
 
   const performSearch = async (messageId: string, intent: string, session: string) => {
+    console.log('🔍 performSearch called - Intent:', intent, 'Session:', session);
     updateThinkingStep(messageId, 'query', 'active');
 
     // Build query string with only collected entities (no undefined values)
@@ -346,10 +377,12 @@ function App() {
       updateThinkingStep(messageId, 'query', 'complete');
       updateThinkingStep(messageId, 'search', 'active');
 
+      console.log('🔍 Fetching session data from backend...');
       // Get search results from backend (they're already there)
       fetch(`${API_BASE_URL}/session/${session}`)
         .then(res => res.json())
         .then(sessionData => {
+          console.log('🔍 Session data received:', sessionData);
           setTimeout(() => {
             updateThinkingStep(messageId, 'search', 'complete');
             setMessages(prev => prev.filter(msg => msg.id !== messageId + '-query'));
@@ -357,140 +390,326 @@ function App() {
             // Check if we have search results from backend
             const lastMessage = sessionData.conversation_history[sessionData.conversation_history.length - 1];
             const searchResults = lastMessage?.search_results;
+            const collectedEntities = sessionData.collected_entities || {};
+            
+            console.log('🔍 Last message from session:', lastMessage);
+            console.log('🔍 Search results from session:', searchResults);
+            console.log('🔍 Collected entities from session:', collectedEntities);
 
             if (searchResults && searchResults.length > 0) {
+              console.log('🔍 Found search results, displaying them');
               // Transform You.com results into insurance plan format for display
-              showResultsFromSearch(messageId, intent, searchResults);
+              showResultsFromSearch(messageId, intent, searchResults, collectedEntities);
             } else {
+              console.log('🔍 No search results found, showing empty state');
               // No results, show empty state
-              showResultsFromSearch(messageId, intent, []);
+              showResultsFromSearch(messageId, intent, [], collectedEntities);
             }
           }, 1000);
         })
         .catch(error => {
-          console.error('Error fetching session:', error);
-          showResultsFromSearch(messageId, intent, []);
+          console.error('❌ Error fetching session:', error);
+          showResultsFromSearch(messageId, intent, [], {});
         });
     }, 800);
   };
 
-  const showResultsFromSearch = (messageId: string, intent: string, searchResults: any[]) => {
+  const showResultsFromSearch = (messageId: string, intent: string, searchResults: any[], collectedEntities: any = {}) => {
     // Remove thinking message
     setMessages(prev => prev.filter(msg => msg.id !== messageId));
 
     let resultContent: React.ReactNode;
     let reasoningSteps: any[] = [];
     let evidenceStepsToShow: any[] = [];
+    
+    console.log('DEBUG showResultsFromSearch - collectedEntities:', collectedEntities);
 
     // Handle different intents with specialized components
     if (intent === 'News') {
-      reasoningSteps = dummyReasoningSteps.news;
+      console.log('News Intent - searchResults:', searchResults);
+      console.log('News Intent - searchResults.length:', searchResults.length);
+      
       // Transform search results to news article format
-      const newsArticles = searchResults.length > 0 ? searchResults.map((result: any) => ({
-        headline: result.title,
-        source: new URL(result.url).hostname.replace('www.', ''),
-        date: 'Recent',
-        summary: result.description,
-        url: result.url
-      })) : dummyNews;
+      const newsArticles = searchResults.length > 0 ? searchResults.map((result: any) => {
+        try {
+          const urlObj = new URL(result.url);
+          return {
+            headline: result.title || 'Untitled Article',
+            source: urlObj.hostname.replace('www.', ''),
+            date: 'Recent',
+            summary: result.description || result.snippets?.[0] || 'No description available',
+            url: result.url
+          };
+        } catch (e) {
+          return {
+            headline: result.title || 'Untitled Article',
+            source: 'Unknown Source',
+            date: 'Recent',
+            summary: result.description || 'No description available',
+            url: result.url || '#'
+          };
+        }
+      }) : dummyNews;
+      
+      // Generate reasoning steps based on actual search
+      reasoningSteps = searchResults.length > 0 ? [
+        {
+          id: '1',
+          label: 'Intent Detection',
+          description: `Identified your query as a News search about "${collectedEntities.topic || 'health insurance'}" for ${collectedEntities.year || 'recent'} articles.`
+        },
+        {
+          id: '2',
+          label: 'Information Gathering',
+          description: `Collected required information: Topic (${collectedEntities.topic}), Year (${collectedEntities.year})${collectedEntities.state ? `, State (${collectedEntities.state})` : ''}.`
+        },
+        {
+          id: '3',
+          label: 'Search Execution',
+          description: `Queried You.com API for relevant health insurance news articles matching your criteria.`
+        },
+        {
+          id: '4',
+          label: 'Results Retrieved',
+          description: `Found ${searchResults.length} relevant news articles from verified sources. Filtered and ranked by relevance.`
+        }
+      ] : dummyReasoningSteps.news;
+      
+      console.log('News Intent - Using:', searchResults.length > 0 ? 'REAL SEARCH RESULTS' : 'DUMMY DATA');
       resultContent = (
-        <div className="space-y-8">
-          <p className="text-gray-700">
-            Here's the latest health insurance news:
-          </p>
+        <div className="space-y-6">
+          <div className="text-gray-700">
+            {searchResults.length > 0 ? (
+              <p>Found <span className="font-semibold text-gray-900">{searchResults.length}</span> recent articles about <span className="font-semibold text-gray-900">{collectedEntities.topic}</span>:</p>
+            ) : (
+              <p>Here's the latest health insurance news:</p>
+            )}
+          </div>
+          
           <NewsCards 
             articles={newsArticles}
-            onArticleClick={(idx) => {
-              if (dummyFullContent.news[idx]) {
-                setViewerContent(dummyFullContent.news[idx]);
+            onArticleClick={async (idx) => {
+              const article = newsArticles[idx];
+              const originalResult = searchResults[idx];
+              if (article && article.url) {
+                // Open viewer with initial data
+                setViewerContent({
+                  type: 'news',
+                  title: article.headline,
+                  headline: article.headline,
+                  source: article.source,
+                  url: article.url,
+                  date: article.date || originalResult?.page_age || 'Recent',
+                  content: article.summary,
+                  snippets: originalResult?.snippets || [],
+                  authors: originalResult?.authors || [],
+                  thumbnail: originalResult?.thumbnail_url,
+                  loading: true,
+                  enhancedSummary: null,
+                  keyPoints: null
+                });
                 setContentViewerOpen(true);
+                
+                // Enhance article content with Gemini in background
+                try {
+                  console.log('Enhancing article with AI...');
+                  const response = await fetch(`${API_BASE_URL}/enhance-article`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      title: article.headline,
+                      description: article.summary,
+                      snippets: originalResult?.snippets || [],
+                      source: article.source
+                    })
+                  });
+                  const data = await response.json();
+                  
+                  if (data.status === 'success' || data.status === 'partial') {
+                    console.log('Article enhanced successfully');
+                    // Update viewer with enhanced content
+                    setViewerContent(prev => prev ? {
+                      ...prev,
+                      loading: false,
+                      enhancedSummary: data.summary,
+                      keyPoints: data.key_points || [],
+                      insights: data.insights
+                    } : null);
+                  } else {
+                    setViewerContent(prev => prev ? { ...prev, loading: false } : null);
+                  }
+                } catch (error) {
+                  console.error('Error enhancing article:', error);
+                  setViewerContent(prev => prev ? { ...prev, loading: false } : null);
+                }
               }
             }}
           />
+          
           <InlineReasoning steps={reasoningSteps} />
-          <QuickActionChips 
-            actions={['Set up enrollment reminder', 'Compare plans', 'Find providers']}
-            onActionClick={(action) => console.log('Action:', action)}
-          />
         </div>
       );
     } else if (intent === 'FAQ') {
-      reasoningSteps = dummyReasoningSteps.faq;
-      const faqKey = 'coinsurance'; // Default, could be extracted from query
-      const faq = dummyFAQs[faqKey as keyof typeof dummyFAQs];
-      // For FAQ, show first result as featured card
-      const firstResult = searchResults[0] || { title: faq?.term, description: faq?.definition, snippets: [faq?.example] };
+      const topic = collectedEntities.topic || 'Health Insurance';
+      
+      // Generate reasoning based on actual search
+      reasoningSteps = searchResults.length > 0 ? [
+        { id: '1', label: 'Detected intent', description: 'FAQ' },
+        { id: '2', label: 'Identified topic', description: topic },
+        { id: '3', label: 'Searched verified sources', description: `Found ${searchResults.length} authoritative sources` },
+        { id: '4', label: 'Prepared answer', description: 'Extracted clean definition from authoritative sources' }
+      ] : dummyReasoningSteps.faq;
+
       resultContent = (
-        <div className="space-y-8">
+        <div className="space-y-6">
           <FAQCard
-            term={firstResult?.title || faq?.term || 'Insurance Term'}
-            definition={firstResult?.description || faq?.definition || ''}
-            example={firstResult?.snippets?.[0] || faq?.example || ''}
+            topic={topic}
+            searchResults={searchResults}
+            onViewerOpen={(briefDefinition) => {
+              // Show loading state in viewer
+              setViewerContent({
+                type: 'faq',
+                topic: topic,
+                definition: briefDefinition,
+                explanation: '',
+                example: '',
+                keyPoints: [],
+                relatedTopics: [],
+                sources: [],
+                loading: true
+              });
+              setContentViewerOpen(true);
+
+              // Synthesize full answer in background
+              fetch(`${API_BASE_URL}/synthesize-faq`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  topic: topic,
+                  search_results: searchResults
+                })
+              })
+                .then(response => response.json())
+                .then(data => {
+                  if (data.status === 'success') {
+                    setViewerContent({
+                      type: 'faq',
+                      topic: data.topic,
+                      definition: data.definition,
+                      explanation: data.explanation,
+                      example: data.example,
+                      keyPoints: data.key_points || [],
+                      relatedTopics: data.related_topics || [],
+                      sources: data.sources || [],
+                      loading: false
+                    });
+                  }
+                })
+                .catch(error => {
+                  console.error('Error synthesizing FAQ:', error);
+                  setViewerContent(prev => prev ? { ...prev, loading: false } : null);
+                });
+            }}
           />
-          {searchResults.length > 1 && (
-            <div className="space-y-3">
-              <p className="text-sm font-medium text-gray-600">Additional Resources:</p>
-              {searchResults.slice(1, 4).map((result: any, idx: number) => (
-                <div key={idx} className="bg-white border border-gray-200 rounded-lg p-3">
-                  <a href={result.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium text-sm">
-                    {result.title}
-                  </a>
-                </div>
-              ))}
-            </div>
-          )}
           <InlineReasoning steps={reasoningSteps} />
-          <QuickActionChips 
-            actions={['Show example', 'Compare rates', 'See related terms']}
-            onActionClick={(action) => console.log('Action:', action)}
-          />
         </div>
       );
     } else if (intent === 'ProviderNetwork') {
       reasoningSteps = dummyReasoningSteps.provider;
-      const provider = dummyProviders[0];
-      resultContent = (
-        <div className="space-y-8">
-          <p className="text-gray-700">
-            Found provider information:
-          </p>
-          <ProviderCard
-            name={provider.name}
-            specialty={provider.specialty}
-            location={provider.location}
-            acceptingNewPatients={provider.acceptingNewPatients}
-            coveredPlans={provider.coveredPlans}
-            onClick={() => {
-              setViewerContent(dummyFullContent.providers[0]);
-              setContentViewerOpen(true);
-            }}
-          />
-          <InlineReasoning steps={reasoningSteps} />
-          <QuickActionChips 
-            actions={['See full provider directory', 'Compare plan coverage', 'Book appointment']}
-            onActionClick={(action) => console.log('Action:', action)}
-          />
-        </div>
-      );
+      
+      // Use search results if available
+      if (searchResults.length > 0) {
+        resultContent = (
+          <div className="space-y-8">
+            <p className="text-gray-700">
+              Found {searchResults.length} provider-related resources:
+            </p>
+            <div className="space-y-3">
+              {searchResults.map((result: any, idx: number) => (
+                <div key={idx} className="bg-white border border-gray-200 rounded-lg p-4">
+                  <a href={result.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">
+                    {result.title}
+                  </a>
+                  <p className="text-sm text-gray-600 mt-1">{result.description}</p>
+                  {result.snippets && result.snippets.length > 0 && (
+                    <p className="text-xs text-gray-500 mt-2 italic">{result.snippets[0]}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+            <InlineReasoning steps={reasoningSteps} />
+          </div>
+        );
+      } else {
+        // Fallback to dummy provider card
+        const provider = dummyProviders[0];
+        resultContent = (
+          <div className="space-y-8">
+            <p className="text-gray-700">
+              Found provider information:
+            </p>
+            <ProviderCard
+              name={provider.name}
+              specialty={provider.specialty}
+              location={provider.location}
+              acceptingNewPatients={provider.acceptingNewPatients}
+              coveredPlans={provider.coveredPlans}
+              onClick={() => {
+                setViewerContent(dummyFullContent.providers[0]);
+                setContentViewerOpen(true);
+              }}
+            />
+            <InlineReasoning steps={reasoningSteps} />
+            <QuickActionChips 
+              actions={['See full provider directory', 'Compare plan coverage', 'Book appointment']}
+              onActionClick={(action) => console.log('Action:', action)}
+            />
+          </div>
+        );
+      }
     } else if (intent === 'Comparison') {
       reasoningSteps = dummyReasoningSteps.comparison;
-      const plansArray = dummyPlans.slice(0, 2);
-      resultContent = (
-        <div className="space-y-8">
-          <p className="text-gray-700">
-            Here's a detailed comparison of the plans:
-          </p>
-          <PlanComparisonTable 
-            plans={plansArray}
-            recommendedPlanId={plansArray[0]?.id}
-          />
-          <InlineReasoning steps={reasoningSteps} />
-          <QuickActionChips 
-            actions={['Export comparison', 'Add another plan', 'See provider networks']}
-            onActionClick={(action) => console.log('Action:', action)}
-          />
-        </div>
-      );
+      
+      // Use search results if available, otherwise fall back to dummy
+      if (searchResults.length > 0) {
+        resultContent = (
+          <div className="space-y-8">
+            <p className="text-gray-700">
+              Based on your search, here are relevant comparison resources:
+            </p>
+            <div className="space-y-3">
+              {searchResults.slice(0, 5).map((result: any, idx: number) => (
+                <div key={idx} className="bg-white border border-gray-200 rounded-lg p-4">
+                  <a href={result.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">
+                    {result.title}
+                  </a>
+                  <p className="text-sm text-gray-600 mt-1">{result.description}</p>
+                </div>
+              ))}
+            </div>
+            <InlineReasoning steps={reasoningSteps} />
+          </div>
+        );
+      } else {
+        // Fallback to dummy data
+        const plansArray = dummyPlans.slice(0, 2);
+        resultContent = (
+          <div className="space-y-8">
+            <p className="text-gray-700">
+              Here's a detailed comparison of the plans:
+            </p>
+            <PlanComparisonTable 
+              plans={plansArray}
+              recommendedPlanId={plansArray[0]?.id}
+            />
+            <InlineReasoning steps={reasoningSteps} />
+            <QuickActionChips 
+              actions={['Export comparison', 'Add another plan', 'See provider networks']}
+              onActionClick={(action) => console.log('Action:', action)}
+            />
+          </div>
+        );
+      }
     } else {
       // Default: PlanInfo - show search results if available, otherwise dummy data
       reasoningSteps = dummyReasoningSteps.planInfo;

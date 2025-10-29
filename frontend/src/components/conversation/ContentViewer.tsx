@@ -1,16 +1,25 @@
-import React from 'react';
-import { X, Calendar, Globe, MapPin, Phone, Mail, ExternalLink } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Calendar, Globe, MapPin, Phone, Mail, ExternalLink, AlertCircle, Loader2 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 
 export type ContentType = 'news' | 'provider' | 'plan' | 'faq';
 
 interface NewsContent {
   type: 'news';
-  headline: string;
-  date: string;
+  headline?: string;
+  title?: string;
+  date?: string;
   source: string;
   author?: string;
+  authors?: string[];
   content: string;
+  snippets?: string[];
+  thumbnail?: string;
   url: string;
+  loading?: boolean;
+  enhancedSummary?: string | null;
+  keyPoints?: string[] | null;
+  insights?: string;
 }
 
 interface ProviderContent {
@@ -39,10 +48,14 @@ interface PlanContent {
 
 interface FAQContent {
   type: 'faq';
-  term: string;
+  topic: string;
   definition: string;
-  details: string;
-  relatedTerms: string[];
+  explanation: string;
+  example: string;
+  keyPoints: string[];
+  relatedTopics: string[];
+  sources: { title: string; url: string; source: string }[];
+  loading?: boolean;
 }
 
 type Content = NewsContent | ProviderContent | PlanContent | FAQContent;
@@ -54,40 +67,141 @@ interface ContentViewerProps {
 }
 
 export const ContentViewer: React.FC<ContentViewerProps> = ({ isOpen, onClose, content }) => {
+  const [iframeError, setIframeError] = useState(false);
+
+  // Reset iframe error when content changes or viewer closes
+  useEffect(() => {
+    setIframeError(false);
+  }, [content, isOpen]);
+
   if (!isOpen || !content) return null;
 
   const renderContent = () => {
     switch (content.type) {
       case 'news':
+        const hasSnippets = content.snippets && content.snippets.length > 0;
+        const hasEnhanced = content.enhancedSummary || content.keyPoints;
+        const authorsList = content.authors && content.authors.length > 0 
+          ? content.authors.join(', ') 
+          : content.author;
+
         return (
-          <div className="space-y-6">
-            <div>
-              <h1 className="text-2xl font-semibold text-gray-900 mb-4">{content.headline}</h1>
-              <div className="flex items-center gap-4 text-sm text-gray-500">
-                <div className="flex items-center gap-1.5">
-                  <Calendar className="w-4 h-4" />
-                  <span>{content.date}</span>
-                </div>
-                <div className="flex items-center gap-1.5">
+          <article className="max-w-3xl mx-auto">
+            {/* Article Header */}
+            <header className="mb-6">
+              <h1 className="text-3xl font-serif font-bold text-gray-900 mb-4 leading-tight">
+                {content.headline || content.title || 'Article'}
+              </h1>
+              
+              {/* Metadata bar - Google style */}
+              <div className="flex items-center gap-3 text-sm text-gray-600 pb-4 mb-4 border-b border-gray-200">
+                <a 
+                  href={content.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 font-medium text-gray-900 hover:underline"
+                >
                   <Globe className="w-4 h-4" />
-                  <span>{content.source}</span>
-                </div>
-                {content.author && <span>By {content.author}</span>}
+                  {content.source}
+                </a>
+                {content.date && (
+                  <>
+                    <span className="text-gray-400">·</span>
+                    <time className="text-gray-600">{content.date}</time>
+                  </>
+                )}
+                {authorsList && (
+                  <>
+                    <span className="text-gray-400">·</span>
+                    <span className="text-gray-600">{authorsList}</span>
+                  </>
+                )}
               </div>
+            </header>
+
+            {/* Featured Image */}
+            {content.thumbnail && (
+              <figure className="mb-6">
+                <img 
+                  src={content.thumbnail} 
+                  alt={content.headline || content.title} 
+                  className="w-full h-auto rounded-sm"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                />
+              </figure>
+            )}
+
+            {/* Article Body */}
+            <div className="prose prose-lg max-w-none">
+              {content.loading ? (
+                <div className="flex items-center gap-3 py-8 text-gray-500">
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>Loading article content...</span>
+                </div>
+              ) : hasEnhanced ? (
+                <>
+                  {/* Enhanced summary - looks like article text */}
+                  {content.enhancedSummary && (
+                    <div className="mb-8">
+                      <p className="text-lg text-gray-900 leading-relaxed whitespace-pre-line font-serif">
+                        {content.enhancedSummary}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Key points - clean list style */}
+                  {content.keyPoints && content.keyPoints.length > 0 && (
+                    <div className="my-8 pl-4 border-l-2 border-gray-300">
+                      <ul className="space-y-3">
+                        {content.keyPoints.map((point, idx) => (
+                          <li key={idx} className="text-base text-gray-800 leading-relaxed list-disc ml-4">
+                            {point}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Additional insights */}
+                  {content.insights && (
+                    <div className="my-8">
+                      <p className="text-base text-gray-800 leading-relaxed font-serif">
+                        {content.insights}
+                      </p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="text-lg text-gray-900 leading-relaxed font-serif">
+                  {content.content}
+                </p>
+              )}
+
+              {/* Excerpts from original - integrated naturally */}
+              {hasSnippets && (
+                <div className="my-8 space-y-6">
+                  {content.snippets.map((snippet, idx) => (
+                    <p key={idx} className="text-base text-gray-800 leading-relaxed font-serif">
+                      {snippet}
+                    </p>
+                  ))}
+                </div>
+              )}
             </div>
-            <div className="prose prose-sm max-w-none">
-              <div className="text-gray-700 leading-relaxed whitespace-pre-line">{content.content}</div>
-            </div>
-            <a
-              href={content.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 text-[#2563EB] hover:underline text-sm"
-            >
-              <ExternalLink className="w-4 h-4" />
-              Read full article
-            </a>
-          </div>
+
+            {/* Footer with source link - minimal Google style */}
+            <footer className="mt-12 pt-6 border-t border-gray-200">
+              <a
+                href={content.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium text-sm"
+              >
+                <span>Read full article on {content.source}</span>
+                <ExternalLink className="w-4 h-4" />
+              </a>
+            </footer>
+          </article>
         );
 
       case 'provider':
@@ -208,31 +322,104 @@ export const ContentViewer: React.FC<ContentViewerProps> = ({ isOpen, onClose, c
 
       case 'faq':
         return (
-          <div className="space-y-6">
-            <div>
-              <h1 className="text-2xl font-semibold text-gray-900 mb-4">{content.term}</h1>
-              <p className="text-lg text-gray-700 leading-relaxed">{content.definition}</p>
-            </div>
-
-            <div className="bg-blue-50 rounded-lg p-4">
-              <h3 className="font-medium text-gray-900 mb-2">More Details</h3>
-              <p className="text-gray-700 leading-relaxed">{content.details}</p>
-            </div>
-
-            <div>
-              <h3 className="font-medium text-gray-900 mb-3">Related Terms</h3>
-              <div className="flex flex-wrap gap-2">
-                {content.relatedTerms.map((term, idx) => (
-                  <button
-                    key={idx}
-                    className="px-3 py-1.5 bg-white border border-gray-200 text-gray-700 text-sm rounded-lg hover:border-[#2563EB] hover:text-[#2563EB] transition-colors"
-                  >
-                    {term}
-                  </button>
-                ))}
+          <article className="max-w-3xl mx-auto">
+            {/* Loading State */}
+            {content.loading ? (
+              <div className="flex items-center gap-3 py-8 text-gray-500">
+                <Loader2 className="w-5 h-5 animate-spin" />
+                <span>Synthesizing comprehensive answer...</span>
               </div>
-            </div>
-          </div>
+            ) : (
+              <>
+                {/* Topic Header */}
+                <header className="mb-6 pb-6 border-b border-gray-200">
+                  <h1 className="text-3xl font-bold text-gray-900 mb-3">{content.topic}</h1>
+                  <div className="text-lg text-gray-700 leading-relaxed font-medium prose prose-lg max-w-none">
+                    <ReactMarkdown>{content.definition}</ReactMarkdown>
+                  </div>
+                </header>
+
+                {/* Detailed Explanation */}
+                {content.explanation && (
+                  <div className="prose prose-lg max-w-none mb-8">
+                    <div className="text-base text-gray-800 leading-relaxed font-serif">
+                      <ReactMarkdown>{content.explanation}</ReactMarkdown>
+                    </div>
+                  </div>
+                )}
+
+                {/* Example Section */}
+                {content.example && (
+                  <div className="bg-blue-50 border-l-4 border-blue-400 rounded-r-lg p-5 mb-8">
+                    <h3 className="text-sm font-semibold text-blue-900 mb-2 uppercase tracking-wide">
+                      Example
+                    </h3>
+                    <div className="text-base text-gray-800 leading-relaxed font-serif prose prose-sm max-w-none">
+                      <ReactMarkdown>{content.example}</ReactMarkdown>
+                    </div>
+                  </div>
+                )}
+
+                {/* Key Points */}
+                {content.keyPoints && content.keyPoints.length > 0 && (
+                  <div className="mb-8">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Key Points</h3>
+                    <ul className="space-y-3">
+                      {content.keyPoints.map((point, idx) => (
+                        <li key={idx} className="flex items-start gap-3">
+                          <span className="flex-shrink-0 w-1.5 h-1.5 bg-gray-400 rounded-full mt-2"></span>
+                          <div className="text-base text-gray-700 leading-relaxed prose prose-sm max-w-none">
+                            <ReactMarkdown>{point}</ReactMarkdown>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Related Topics */}
+                {content.relatedTopics && content.relatedTopics.length > 0 && (
+                  <div className="mb-8">
+                    <h3 className="text-sm font-medium text-gray-600 mb-3">Related Topics</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {content.relatedTopics.map((topic, idx) => (
+                        <button
+                          key={idx}
+                          className="px-3 py-1.5 bg-gray-100 text-gray-700 text-sm rounded-full hover:bg-gray-200 transition-colors"
+                        >
+                          {topic}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Sources Footer */}
+                {content.sources && content.sources.length > 0 && (
+                  <footer className="mt-12 pt-6 border-t border-gray-200">
+                    <h3 className="text-sm font-medium text-gray-600 mb-3">Sources</h3>
+                    <div className="space-y-2">
+                      {content.sources.map((source, idx) => (
+                        <a
+                          key={idx}
+                          href={source.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-start gap-2 text-sm text-blue-600 hover:text-blue-700 hover:underline group"
+                        >
+                          <span className="flex-shrink-0 text-gray-400 font-mono text-xs mt-0.5">
+                            [{idx + 1}]
+                          </span>
+                          <span className="flex-1">{source.title}</span>
+                          <ExternalLink className="w-3.5 h-3.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </a>
+                      ))}
+                    </div>
+                  </footer>
+                )}
+              </>
+            )}
+          </article>
         );
 
       default:

@@ -1,50 +1,85 @@
-import React from 'react';
-import { HelpCircle } from 'lucide-react';
-import { CitationBadge } from '../conversation/CitationBadge';
+import React, { useState, useEffect } from 'react';
+import { ChevronRight, Loader2 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import { API_BASE_URL } from '../../config';
 
 interface FAQCardProps {
-  term: string;
-  definition: string;
-  example?: {
-    title: string;
-    description: string;
-  };
+  topic: string;
+  searchResults: any[];
+  onViewerOpen: (briefDefinition: string) => void;
 }
 
-export const FAQCard: React.FC<FAQCardProps> = ({ term, definition, example }) => {
-  return (
-    <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6">
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-start gap-3 flex-1">
-          <div className="w-10 h-10 rounded-full bg-[#2563EB]/10 flex items-center justify-center flex-shrink-0">
-            <HelpCircle className="w-5 h-5 text-[#2563EB]" />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-gray-900 mb-2 font-semibold text-lg">{term}</h3>
-            <p className="text-sm text-gray-700 leading-relaxed">{definition}</p>
-          </div>
-        </div>
+export const FAQCard: React.FC<FAQCardProps> = ({ topic, searchResults, onViewerOpen }) => {
+  const [briefAnswer, setBriefAnswer] = useState<string>('');
+  const [loading, setLoading] = useState(true);
 
-        {/* Citation badge */}
-        <CitationBadge
-          source="healthcare.gov"
-          url="https://healthcare.gov/glossary"
-          snippet="Official health insurance glossary"
-          dateFound={new Date().toLocaleDateString()}
-        />
+  useEffect(() => {
+    const fetchBriefAnswer = async () => {
+      if (!searchResults || searchResults.length === 0) {
+        setBriefAnswer('No information available');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        console.log('Fetching clean brief answer for:', topic);
+        const response = await fetch(`${API_BASE_URL}/brief-faq`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            topic: topic,
+            search_results: searchResults
+          })
+        });
+        const data = await response.json();
+        
+        const answer = data.brief_answer || searchResults[0]?.description || 'Click to see explanation';
+        setBriefAnswer(answer);
+        console.log('Brief answer received:', answer.substring(0, 100) + '...');
+      } catch (error) {
+        console.error('Error fetching brief answer:', error);
+        setBriefAnswer(searchResults[0]?.description || 'Click to see explanation');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchBriefAnswer();
+  }, [topic, searchResults]);
+
+  if (loading) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-lg p-6">
+        <div className="flex items-center gap-3 text-gray-500">
+          <Loader2 className="w-5 h-5 animate-spin" />
+          <span>Analyzing sources and preparing answer...</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+      {/* Main Answer - Self-sufficient */}
+      <div className="p-6">
+        <h3 className="text-xl font-bold text-gray-900 mb-3">
+          {topic}
+        </h3>
+        <div className="text-base text-gray-800 leading-relaxed prose prose-base max-w-none">
+          <ReactMarkdown>{briefAnswer}</ReactMarkdown>
+        </div>
       </div>
 
-      {/* Example section */}
-      {example && (
-        <div className="mt-4 bg-warning-bg border border-warning-border rounded-lg p-4">
-          <div className="text-xs font-medium text-warning-text mb-1">
-            {example.title}
-          </div>
-          <div className="text-sm text-warning-text leading-relaxed">
-            {example.description}
-          </div>
-        </div>
-      )}
+      {/* Learn More CTA */}
+      <button
+        onClick={() => onViewerOpen(briefAnswer)}
+        className="w-full px-6 py-3 bg-gray-50 hover:bg-gray-100 border-t border-gray-200 transition-colors group flex items-center justify-between"
+      >
+        <span className="text-sm text-gray-700 font-medium">
+          See detailed explanation with examples and sources
+        </span>
+        <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-blue-600 transition-colors" />
+      </button>
     </div>
   );
 };
