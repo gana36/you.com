@@ -528,7 +528,7 @@ function App() {
                   if (data.status === 'success' || data.status === 'partial') {
                     console.log('Article enhanced successfully');
                     // Update viewer with enhanced content
-                    setViewerContent(prev => prev ? {
+                    setViewerContent((prev: any) => prev ? {
                       ...prev,
                       loading: false,
                       enhancedSummary: data.summary,
@@ -536,11 +536,11 @@ function App() {
                       insights: data.insights
                     } : null);
                   } else {
-                    setViewerContent(prev => prev ? { ...prev, loading: false } : null);
+                    setViewerContent((prev: any) => prev ? { ...prev, loading: false } : null);
                   }
                 } catch (error) {
                   console.error('Error enhancing article:', error);
-                  setViewerContent(prev => prev ? { ...prev, loading: false } : null);
+                  setViewerContent((prev: any) => prev ? { ...prev, loading: false } : null);
                 }
               }
             }}
@@ -607,7 +607,7 @@ function App() {
                 })
                 .catch(error => {
                   console.error('Error synthesizing FAQ:', error);
-                  setViewerContent(prev => prev ? { ...prev, loading: false } : null);
+                  setViewerContent((prev: any) => prev ? { ...prev, loading: false } : null);
                 });
             }}
           />
