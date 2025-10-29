@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 
 interface ReasoningStep {
   id: string;
@@ -15,37 +15,38 @@ export const InlineReasoning: React.FC<InlineReasoningProps> = ({ steps }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
-    <div className="border border-gray-200 rounded-xl overflow-hidden bg-gradient-to-br from-blue-50/50 to-purple-50/50">
-      {/* Header - Always visible */}
+    <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50/50">
+      {/* Header - Minimal like ChatGPT */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full px-5 py-3 flex items-center justify-between hover:bg-white/50 transition-colors"
+        className="w-full px-4 py-2.5 flex items-center gap-2 hover:bg-gray-100/50 transition-colors text-left group"
       >
-        <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-[#2563EB]" />
-          <span className="text-sm font-medium text-gray-700">
-            {isExpanded ? 'Hide reasoning' : 'Show reasoning'}
-          </span>
-          <span className="text-xs text-gray-500">({steps.length} steps)</span>
-        </div>
         {isExpanded ? (
-          <ChevronUp className="w-4 h-4 text-gray-400" />
+          <ChevronDown className="w-4 h-4 text-gray-500 flex-shrink-0" />
         ) : (
-          <ChevronDown className="w-4 h-4 text-gray-400" />
+          <ChevronRight className="w-4 h-4 text-gray-500 flex-shrink-0" />
+        )}
+        <span className="text-sm text-gray-600 font-normal">
+          {isExpanded ? 'Reasoning' : 'Reasoning'}
+        </span>
+        {!isExpanded && (
+          <span className="text-xs text-gray-400">({steps.length})</span>
         )}
       </button>
 
-      {/* Expandable content */}
+      {/* Expandable content - Clean list */}
       {isExpanded && (
-        <div className="px-5 pb-4 space-y-3 border-t border-gray-200 bg-white/30">
+        <div className="px-4 pb-3 pt-1 space-y-2 bg-white/40">
           {steps.map((step, idx) => (
-            <div key={step.id} className="flex gap-3 pt-3">
-              <div className="flex-shrink-0 w-6 h-6 rounded-full bg-[#2563EB]/10 flex items-center justify-center">
-                <span className="text-xs font-medium text-[#2563EB]">{idx + 1}</span>
-              </div>
+            <div key={step.id} className="flex gap-3 py-1.5">
+              <span className="text-xs text-gray-400 font-medium mt-0.5 flex-shrink-0">
+                {idx + 1}.
+              </span>
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-gray-900 mb-0.5">{step.label}</div>
-                <div className="text-xs text-gray-600 leading-relaxed">{step.description}</div>
+                <div className="text-sm text-gray-700 leading-relaxed">
+                  <span className="font-medium">{step.label}:</span>{' '}
+                  <span className="text-gray-600">{step.description}</span>
+                </div>
               </div>
             </div>
           ))}
