@@ -61,10 +61,11 @@ VALID_ENTITIES = [
 ]
 
 # Define required entities for insurance search (varies by intent)
+# ORDER MATTERS: ask for entities in logical order, not arbitrary order
 REQUIRED_ENTITIES_BY_INTENT = {
     "PlanInfo": ["plan_name", "insurer", "year", "county", "age"],
-    "CoverageDetail": ["plan_name", "insurer", "year", "county", "coverage_item", "subtype"],
-    "ProviderNetwork": ["provider_name", "specialty", "county", "plan_name", "insurer"],
+    "CoverageDetail": ["plan_name", "insurer", "year", "coverage_item", "subtype", "county"],  # Reordered: coverage_item before county
+    "ProviderNetwork": ["provider_name", "specialty", "plan_name", "insurer", "county"],  # Reordered: name/specialty first
     "Comparison": ["plan_name", "insurer", "year", "county"],  # age and features are optional
     "FAQ": ["topic"],  # state/local context is optional
     "News": ["topic", "year"]  # insurer/plan_name and state are optional but at least one should be provided
@@ -461,6 +462,18 @@ async def chat(request: ConversationRequest):
         "timestamp": datetime.now().isoformat()
     })
 
+    # Only clear entities if we completed a previous query (stage was "complete")
+    # If stage is "collecting", we're still answering questions for the same intent, so keep entities/intent
+    if session["stage"] == "complete":
+        print(f"DEBUG: Previous query complete, clearing entities for new query")
+        session["collected_entities"] = {}
+        session["intent"] = None
+        session["stage"] = "initial"
+    elif session["stage"] == "initial":
+        # For truly new sessions, just ensure stage is initial
+        pass
+    # If stage is "collecting" or "searching", don't clear - we're continuing the same query
+
     try:
         # Pre-filter: Quick keyword-based intent detection for obvious cases
         query_lower = request.query.lower()
@@ -551,25 +564,37 @@ Return JSON only:
         print(f"\n=== DEBUG: Intent Detection ===")
         print(f"Detected intent: {intent}")
         print(f"Extracted entities: {new_entities}")
+        print(f"Current session intent: {session['intent']}")
+        print(f"Current session stage: {session['stage']}")
 
-        # Update session intent if not set
-        if not session["intent"]:
+        # Only update intent if we're not already collecting for an intent
+        # This preserves intent when user is answering entity collection questions
+        if session["stage"] != "collecting" or not session["intent"]:
             session["intent"] = intent
+        else:
+            print(f"DEBUG: Keeping existing intent '{session['intent']}' (ignoring detected '{intent}' during collection)")
 
         # Merge new entities with collected ones
+        # Also handle entity mapping for different intents
         for key, value in new_entities.items():
             if key in VALID_ENTITIES and value:
                 session["collected_entities"][key] = value
 
-        # Check if we have all required information based on intent
-        required_for_intent = REQUIRED_ENTITIES_BY_INTENT.get(intent, [])
+        # Special mapping: for CoverageDetail, "features" should map to "coverage_item"
+        if session["intent"] == "CoverageDetail" and "features" in new_entities and "coverage_item" not in new_entities:
+            session["collected_entities"]["coverage_item"] = new_entities["features"]
+            print(f"DEBUG: Mapped features '{new_entities['features']}' to coverage_item for CoverageDetail intent")
+
+        # Check if we have all required information based on SESSION intent (not newly detected)
+        # This ensures we use the correct intent during entity collection
+        required_for_intent = REQUIRED_ENTITIES_BY_INTENT.get(session["intent"], [])
         missing_entities = []
         for entity in required_for_intent:
             if entity not in session["collected_entities"] or not session["collected_entities"][entity]:
                 missing_entities.append(entity)
 
         # DEBUG: Log required entities check
-        print(f"Required entities for {intent}: {required_for_intent}")
+        print(f"Required entities for {session['intent']}: {required_for_intent}")
         print(f"Collected entities: {session['collected_entities']}")
         print(f"Missing entities: {missing_entities}")
         print(f"Session stage: {session['stage']}")

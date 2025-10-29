@@ -427,30 +427,57 @@ function App() {
         </div>
       );
     } else {
-      // For PlanInfo and other intents, show generic search results
+      // For PlanInfo and other intents, show horizontally scrollable cards
       resultContent = (
         <div className="space-y-8">
-          <p className="text-gray-700">
-            Found {searchResults.length} insurance-related resources based on your criteria:
-          </p>
-          <div className="space-y-4">
-            {searchResults.map((result: any, idx: number) => (
-              <div key={idx} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-lg transition-shadow">
-                <h4 className="font-semibold text-blue-600 mb-2">
-                  <a href={result.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
-                    {result.title}
-                  </a>
-                </h4>
-                <p className="text-sm text-gray-600 mb-3">{result.description}</p>
-                {result.snippets && result.snippets.length > 0 && (
-                  <div className="bg-gray-50 rounded p-3 text-xs text-gray-600 space-y-2">
-                    {result.snippets.slice(0, 2).map((snippet: string, i: number) => (
-                      <p key={i}>{snippet}</p>
-                    ))}
+          <div>
+            <p className="text-gray-700 mb-4">
+              Found {searchResults.length} insurance-related resources based on your criteria:
+            </p>
+
+            {/* Horizontally scrollable cards container */}
+            <div className="relative">
+              <div className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory scroll-smooth"
+                   style={{ scrollBehavior: 'smooth' }}>
+                {searchResults.map((result: any, idx: number) => (
+                  <div
+                    key={idx}
+                    className="flex-shrink-0 w-96 bg-white border border-gray-200 rounded-xl p-5 hover:shadow-lg hover:border-gray-300 transition-all snap-start"
+                  >
+                    {/* Header */}
+                    <h4 className="font-semibold text-blue-600 mb-3 line-clamp-2 hover:text-blue-700">
+                      <a href={result.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                        {result.title}
+                      </a>
+                    </h4>
+
+                    {/* Description */}
+                    <p className="text-sm text-gray-600 mb-4 line-clamp-3">{result.description}</p>
+
+                    {/* Snippets */}
+                    {result.snippets && result.snippets.length > 0 && (
+                      <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-600 space-y-2 mb-4">
+                        {result.snippets.slice(0, 2).map((snippet: string, i: number) => (
+                          <p key={i} className="line-clamp-2">{snippet}</p>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Footer Link */}
+                    <div className="pt-3 border-t border-gray-100">
+                      <a
+                        href={result.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-[#2563EB] hover:text-[#1d4ed8] font-medium inline-flex items-center gap-1"
+                      >
+                        View full article →
+                      </a>
+                    </div>
                   </div>
-                )}
+                ))}
               </div>
-            ))}
+            </div>
           </div>
           <QuickActionChips
             actions={['Refine search', 'Compare plans', 'Find providers']}

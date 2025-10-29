@@ -52,7 +52,7 @@ build/
 dist/
 public/build/
 .vite/
-
+image.png
 # Documentation (not needed in repo)
 *.md
 !README.md
