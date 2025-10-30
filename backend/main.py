@@ -360,7 +360,8 @@ def search_datasets(query: str, entities: Dict[str, Any]) -> List[Dict[str, Any]
                 'description': f"{item.get('issuer_name')} - {item.get('metal_level')} {item.get('plan_type')} plan for {item.get('year')}",
                 'data': item,
                 'score': score,
-                'match_reasons': match_reasons
+                'match_reasons': match_reasons,
+                'url': item.get('official_source') or item.get('data_source_url')
             })
     
     # Search policy data - has detailed coverage info
@@ -405,7 +406,8 @@ def search_datasets(query: str, entities: Dict[str, Any]) -> List[Dict[str, Any]
                 'description': item.get('text_chunk', ''),
                 'data': item,
                 'score': score,
-                'match_reasons': match_reasons
+                'match_reasons': match_reasons,
+                'url': item.get('sbc_url')
             })
     
     # Search provider data
@@ -1100,7 +1102,8 @@ async def search_general(request: dict):
             sources.append({
                 'title': result['title'],
                 'source': result['source'],
-                'type': 'dataset'
+                'type': 'dataset',
+                'url': result.get('url')  # Include URL from dataset if available
             })
         
         # Add API results to context

@@ -644,6 +644,30 @@ function App() {
               const hasMultiplePlans = data.raw_results?.dataset_results?.filter((r: any) => r.type === 'plan').length > 1;
               const isComparison = originalQuery.toLowerCase().includes('compare') || hasMultiplePlans;
               
+              // Generate reasoning steps for General intent
+              const datasetCount = data.raw_results?.dataset_results?.length || 0;
+              const webCount = data.raw_results?.api_results?.length || 0;
+              
+              // Determine the specific query type for display
+              let queryType = 'General Information';
+              const query = originalQuery.toLowerCase();
+              if (query.includes('compare') || query.includes('comparison')) {
+                queryType = 'Plan Comparison';
+              } else if (query.includes('cover') || query.includes('benefit')) {
+                queryType = 'Coverage Details';
+              } else if (query.includes('doctor') || query.includes('provider') || query.includes('network')) {
+                queryType = 'Provider Network';
+              } else if (query.includes('plan') || query.includes('premium') || query.includes('deductible')) {
+                queryType = 'Plan Information';
+              }
+              
+              const generalReasoningSteps = [
+                { id: '1', label: 'Intent Detection', description: `Identified as ${queryType}` },
+                { id: '2', label: 'Dataset Search', description: `Found ${datasetCount} results in local insurance datasets` },
+                { id: '3', label: 'Web Search', description: `Found ${webCount} results from You.com API` },
+                { id: '4', label: 'AI Synthesis', description: 'Combined and summarized results with Gemini AI' }
+              ];
+              
               // Update the message with clean, professional UI
               const synthesizedContent = (
                 <div className="space-y-6">
@@ -741,6 +765,9 @@ function App() {
                       </div>
                     </div>
                   )}
+
+                  {/* Inline Reasoning - Show how the answer was generated */}
+                  <InlineReasoning steps={generalReasoningSteps} />
                 </div>
               );
 
