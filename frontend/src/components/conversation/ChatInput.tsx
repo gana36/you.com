@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, Paperclip } from 'lucide-react';
+import { Send, Loader2 } from 'lucide-react';
 
 interface ChatInputProps {
   onSend: (message: string) => void;
@@ -82,12 +82,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               rows={1}
               className="w-full px-4 sm:px-5 py-3 sm:py-3.5 pr-10 sm:pr-12 border border-gray-300 rounded-3xl focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] outline-none resize-none max-h-32 disabled:bg-gray-50 disabled:cursor-not-allowed text-sm sm:text-base text-gray-900 placeholder:text-gray-400"
             />
-            <button
-              disabled
-              className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 text-gray-300 cursor-not-allowed hidden sm:block"
-            >
-              <Paperclip className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
-            </button>
           </div>
           <button
             onClick={handleSubmit}
