@@ -57,6 +57,7 @@ class IntentResponse(BaseModel):
 class ConversationRequest(BaseModel):
     session_id: Optional[str] = Field(None, description="Session ID for continuing conversation")
     query: str = Field(..., description="User's message")
+    intelligent_mode: bool = Field(default=True, description="Whether to persist entities across messages")
 
 
 class ConversationResponse(BaseModel):
@@ -67,6 +68,7 @@ class ConversationResponse(BaseModel):
     collected_entities: Dict[str, Any] = Field(default_factory=dict, description="Entities collected so far")
     search_results: Optional[List[Dict[str, Any]]] = Field(None, description="Search results if query is complete")
     status: str = Field(default="in_progress", description="Status: in_progress, searching, complete")
+    intent: Optional[str] = Field(None, description="Detected intent of the user's query")
 
 
 def create_prompt(query: str) -> str:
@@ -78,8 +80,8 @@ Your task is to:
 2. Extract relevant entities from the query
 
 **Valid Intents:**
-- PlanInfo: User wants information about a specific health insurance plan
-- CoverageDetail: User wants details about what a plan covers
+- PlanInfo: User wants general information about a health insurance plan (e.g., "Tell me about Molina Silver")
+- CoverageDetail: User wants details about specific coverage aspects like deductibles, copays, what's covered (e.g., "What's the deductible?", "Does it cover dental?")
 - ProviderNetwork: User wants to know about doctors/hospitals in a plan's network
 - Comparison: User wants to compare multiple plans
 - FAQ: User has a general question about health insurance
@@ -91,8 +93,8 @@ Your task is to:
 - year: Year of coverage (e.g., "2024", "2025")
 - county: County name (e.g., "Broward", "Miami-Dade", "Leon")
 - age: Age of the person (e.g., "43", "65")
-- coverage_item: Specific coverage type (e.g., "dental", "vision", "prescription drugs", "mental health")
-- subtype: Subtype or specific aspect of coverage (e.g., "preventive care", "specialist visits")
+- coverage_item: Specific coverage type or cost aspect (e.g., "dental", "vision", "prescription drugs", "mental health", "deductible", "copay", "coinsurance", "out of pocket maximum")
+- subtype: Subtype or specific aspect of coverage (e.g., "preventive care", "specialist visits", "emergency room")
 - provider_name: Name of a doctor or hospital (e.g., "Dr. Smith", "Memorial Hospital")
 - specialty: Medical specialty (e.g., "cardiology", "pediatrics", "dermatology")
 - features: Plan features to compare (e.g., "premiums", "deductibles", "copays")
@@ -192,6 +194,54 @@ def get_article_content(url: str) -> Optional[str]:
         return None
 
 
+def build_query_from_entities(entities: Dict[str, Any], intent: str) -> str:
+    """Build a dynamic search query based on current entities and intent."""
+    query_parts = []
+
+    if intent == "PlanInfo":
+        # Build: "Find [plan_name] from [insurer] in [county] for [age] year old"
+        if entities.get("plan_name"):
+            query_parts.append(f"Find {entities['plan_name']}")
+        elif entities.get("insurer"):
+            query_parts.append(f"Find insurance plans from {entities['insurer']}")
+        else:
+            query_parts.append("Find insurance plans")
+
+    elif intent == "Comparison":
+        # Build: "Compare [plan_name1] vs [plan_name2]"
+        plan_names = entities.get("plan_name", [])
+        if isinstance(plan_names, list) and len(plan_names) > 1:
+            query_parts.append(f"Compare {' vs '.join(plan_names)}")
+        else:
+            query_parts.append("Compare insurance plans")
+
+    elif intent == "CoverageDetail":
+        # Build: "What does [plan_name] cover for [coverage_item]"
+        if entities.get("plan_name") and entities.get("coverage_item"):
+            query_parts.append(f"What does {entities['plan_name']} cover for {entities['coverage_item']}")
+        elif entities.get("coverage_item"):
+            query_parts.append(f"Coverage details for {entities['coverage_item']}")
+        else:
+            query_parts.append("Coverage details")
+
+    elif intent == "ProviderNetwork":
+        # Build: "Find [provider_name] or [specialty] providers in [county]"
+        if entities.get("provider_name"):
+            query_parts.append(f"Find {entities['provider_name']}")
+        elif entities.get("specialty"):
+            query_parts.append(f"Find {entities['specialty']} providers")
+        else:
+            query_parts.append("Find healthcare providers")
+
+    elif intent == "FAQ":
+        query_parts.append(f"About {entities.get('topic', 'health insurance')}")
+
+    elif intent == "News":
+        query_parts.append(f"News about {entities.get('topic', 'health insurance')}")
+
+    return " ".join(query_parts) if query_parts else "health insurance"
+
+
 def search_with_you_api(query: str, entities: Dict[str, Any], intent: str = "PlanInfo") -> List[Dict[str, Any]]:
     """Search using You.com API with collected user information."""
     you_api_key = os.getenv("you_api")
@@ -200,8 +250,13 @@ def search_with_you_api(query: str, entities: Dict[str, Any], intent: str = "Pla
         raise HTTPException(status_code=500, detail="You.com API key not configured")
 
     # Build enhanced query with user context
-    # Only add personal info for intents that need it (PlanInfo, Comparison)
-    enhanced_query = query
+    # If we have collected entities, rebuild query dynamically instead of using original query
+    if entities and any(entities.values()):
+        enhanced_query = build_query_from_entities(entities, intent)
+        print(f"DEBUG: Built dynamic query from entities: '{enhanced_query}'")
+    else:
+        enhanced_query = query
+        print(f"DEBUG: Using original query: '{enhanced_query}'")
 
     if intent in ["PlanInfo", "Comparison", "ProviderNetwork"]:
         if entities.get("age"):
@@ -781,6 +836,217 @@ Make it informative, well-written, and easy to understand. Focus on the most imp
         raise HTTPException(status_code=500, detail=f"Error enhancing article: {str(e)}")
 
 
+def synthesize_answer_from_search(
+    query: str,
+    intent: str,
+    search_results: List[Dict[str, Any]],
+    collected_entities: Dict[str, Any]
+) -> str:
+    """
+    Use Gemini to synthesize a clean answer from You.com search results.
+    Extracts information from snippets, titles, and descriptions.
+    """
+    if not search_results:
+        return "I couldn't find specific information about your query. Please try asking with more details."
+
+    # Extract all snippets and descriptions
+    context_parts = []
+    for idx, result in enumerate(search_results[:5]):  # Use top 5 results
+        title = result.get('title', '')
+        description = result.get('description', '')
+        snippets = result.get('snippets', [])
+
+        context_parts.append(f"Source {idx+1}: {title}")
+        if description:
+            context_parts.append(f"Description: {description}")
+        if snippets:
+            for snippet in snippets[:2]:  # Top 2 snippets per source
+                context_parts.append(f"- {snippet}")
+        context_parts.append("")  # Blank line between sources
+
+    context_text = "\n".join(context_parts)
+
+    # Build synthesis prompt based on intent
+    if intent == "PlanInfo":
+        prompt = f"""Based on the search results below, provide a comprehensive answer about the health insurance plan.
+
+User's question: {query}
+
+Collected information:
+- Plan: {collected_entities.get('plan_name', 'N/A')}
+- Insurer: {collected_entities.get('insurer', 'N/A')}
+- Year: {collected_entities.get('year', 'N/A')}
+- County: {collected_entities.get('county', 'N/A')}
+- Age: {collected_entities.get('age', 'N/A')}
+
+Search Results:
+{context_text}
+
+Provide a clear, concise answer (2-4 paragraphs) about this plan. Include:
+- Key benefits and coverage
+- Cost information (premium, deductible, out-of-pocket max)
+- Network type (HMO/PPO/etc)
+- Any notable features
+
+Format your answer naturally. Don't use bullet points. Be direct and informative."""
+
+    elif intent == "CoverageDetail":
+        prompt = f"""Based on the search results below, answer the specific coverage question.
+
+User's question: {query}
+
+Collected information:
+- Plan: {collected_entities.get('plan_name', 'N/A')}
+- Insurer: {collected_entities.get('insurer', 'N/A')}
+- Coverage item: {collected_entities.get('coverage_item', 'N/A')}
+- Year: {collected_entities.get('year', 'N/A')}
+
+Search Results:
+{context_text}
+
+Provide a focused answer (1-3 paragraphs) about the specific coverage question. Include:
+- Whether it's covered
+- Any copays, coinsurance, or deductibles that apply
+- Limitations or requirements
+- Specific dollar amounts if available
+
+Format your answer naturally. Don't use bullet points. Be direct and specific."""
+
+    else:
+        # Fallback
+        prompt = f"""Based on the search results below, answer this health insurance question: {query}
+
+Search Results:
+{context_text}
+
+Provide a clear, helpful answer in 2-3 paragraphs."""
+
+    try:
+        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.GenerationConfig(
+                temperature=0.3,
+                max_output_tokens=1024,
+            )
+        )
+
+        answer = response.text.strip()
+        print(f"DEBUG: Synthesized answer length: {len(answer)} characters")
+        return answer
+
+    except Exception as e:
+        print(f"ERROR: Failed to synthesize answer: {str(e)}")
+        # Fallback: return first few snippets
+        fallback_snippets = []
+        for result in search_results[:3]:
+            if result.get('snippets'):
+                fallback_snippets.extend(result['snippets'][:2])
+
+        if fallback_snippets:
+            return "Here's what I found:\n\n" + "\n\n".join(fallback_snippets[:3])
+        else:
+            return f"I found {len(search_results)} results but couldn't extract detailed information. Please try rephrasing your question."
+
+
+def is_insurance_related_query(query: str) -> bool:
+    """
+    Smart guardrail to check if query is related to health insurance.
+    Returns True if relevant, False if off-topic or spam.
+    """
+    query_lower = query.lower().strip()
+
+    # Empty or too short queries
+    if len(query_lower) < 2:
+        return False
+
+    # Pure numbers are OK (age, year, income during collection)
+    if query_lower.isdigit():
+        return True
+
+    # Single character responses
+    if len(query_lower) == 1:
+        return False
+
+    # Common greetings and off-topic phrases - reject immediately
+    off_topic_patterns = [
+        'hello', 'hi', 'hey', 'sup', 'yo',
+        'thanks', 'thank you', 'thx',
+        'bye', 'goodbye', 'see you', 'later',
+        'how are you', 'whats up', "what's up",
+        'who are you', 'what is your name', 'tell me about yourself',
+        'weather', 'temperature', 'forecast',
+        'sports', 'game', 'score', 'match',
+        'movie', 'film', 'show', 'netflix',
+        'recipe', 'food', 'cook', 'restaurant',
+        'music', 'song', 'album', 'artist',
+        'joke', 'funny', 'laugh', 'humor'
+    ]
+
+    for pattern in off_topic_patterns:
+        if pattern in query_lower:
+            # Make sure it's not part of a larger insurance question
+            # e.g., "hello, I need insurance" should pass
+            words = query_lower.split()
+            if len(words) <= 2 or (pattern in words and len(words) <= 3):
+                return False
+
+    # Insurance-specific keywords (strong signals)
+    insurance_keywords = [
+        'insurance', 'plan', 'coverage', 'deductible', 'copay', 'coinsurance',
+        'premium', 'out of pocket', 'oop', 'max', 'limit',
+        'provider', 'network', 'doctor', 'physician', 'hospital', 'clinic',
+        'benefits', 'policy', 'claim', 'enroll', 'enrollment',
+        'aetna', 'molina', 'unitedhealth', 'united', 'cigna', 'humana',
+        'blue cross', 'bcbs', 'anthem', 'kaiser',
+        'hmo', 'ppo', 'epo', 'pos',
+        'aca', 'obamacare', 'medicaid', 'medicare', 'chip',
+        'subsidy', 'tax credit', 'marketplace',
+        'specialist', 'prescription', 'drug', 'rx', 'pharmacy',
+        'mental health', 'therapy', 'counseling',
+        'vision', 'dental', 'eye', 'tooth', 'glasses',
+        'preventive', 'checkup', 'screening', 'vaccine',
+        'emergency', 'urgent care', 'er',
+        'in-network', 'out-of-network', 'out of network',
+        'qualify', 'eligible', 'eligibility',
+        'compare', 'comparison', 'versus', 'vs',
+        'county', 'state', 'florida', 'miami', 'broward', 'leon'
+    ]
+
+    has_insurance_keyword = any(keyword in query_lower for keyword in insurance_keywords)
+
+    # If has clear insurance keywords, it's valid
+    if has_insurance_keyword:
+        return True
+
+    # Health-related terms (weaker signals, need more context)
+    health_keywords = [
+        'health', 'medical', 'healthcare', 'care',
+        'covered', 'cover', 'covers',
+        'cost', 'price', 'expense', 'fee', 'charge', 'pay', 'afford',
+        'find', 'search', 'looking', 'need', 'want', 'get',
+        'best', 'cheapest', 'affordable', 'lowest',
+        'help', 'question', 'information', 'details'
+    ]
+
+    has_health_keyword = any(keyword in query_lower for keyword in health_keywords)
+
+    # Health keywords + reasonable length = probably relevant
+    if has_health_keyword and len(query_lower.split()) >= 3:
+        return True
+
+    # If no keywords but longer phrase (5+ words), give benefit of doubt
+    if len(query_lower.split()) >= 5:
+        return True
+
+    # Single word with no context = not relevant
+    if len(query_lower.split()) == 1:
+        return False
+
+    # Default: reject if we can't determine relevance
+    return False
+
+
 @app.post("/chat", response_model=ConversationResponse)
 async def chat(request: ConversationRequest):
     """
@@ -801,6 +1067,20 @@ async def chat(request: ConversationRequest):
     # Get or create session
     session_id, session = get_or_create_session(request.session_id)
 
+    # GUARDRAIL: Check if query is insurance-related (unless we're in the middle of collecting)
+    # During collection, user might just provide numbers/single words which are valid
+    if session["stage"] != "collecting" and not is_insurance_related_query(request.query):
+        print(f"DEBUG: Query rejected as off-topic or too vague: '{request.query}'")
+        return ConversationResponse(
+            session_id=session_id,
+            response="I can only help with health insurance-related questions.",
+            requires_input=False,
+            next_question=None,
+            collected_entities=session["collected_entities"],
+            status="collecting",
+            intent=session.get("intent")
+        )
+
     # Add user query to conversation history
     session["conversation_history"].append({
         "role": "user",
@@ -808,20 +1088,35 @@ async def chat(request: ConversationRequest):
         "timestamp": datetime.now().isoformat()
     })
 
-    # Only clear entities if we completed a previous query (stage was "complete")
-    # If stage is "collecting", we're still answering questions for the same intent, so keep entities/intent
-    if session["stage"] == "complete":
-        print(f"DEBUG: Previous query complete, clearing entities for new query")
-        print(f"DEBUG: Old entities: {session['collected_entities']}")
-        print(f"DEBUG: Old intent: {session['intent']}")
-        session["collected_entities"] = {}
-        session["intent"] = None
-        session["stage"] = "initial"
-        print(f"DEBUG: Entities cleared, ready for new query")
-    elif session["stage"] == "initial":
-        # For truly new sessions, just ensure stage is initial
-        pass
-    # If stage is "collecting" or "searching", don't clear - we're continuing the same query
+    # Entity clearing logic based on intelligent_mode setting
+    if not request.intelligent_mode:
+        # Intelligent Mode OFF: Clear entities, but ONLY after completing a query
+        # During entity collection (stage == "collecting"), keep entities/intent to maintain conversation flow
+        if session["stage"] == "complete":
+            print(f"DEBUG: Intelligent mode OFF - previous query complete, clearing entities for new query")
+            print(f"DEBUG: Old entities: {session['collected_entities']}")
+            session["collected_entities"] = {}
+            session["intent"] = None
+            session["stage"] = "initial"
+        elif session["stage"] == "collecting":
+            print(f"DEBUG: Intelligent mode OFF but still collecting - PRESERVING entities during collection")
+            print(f"DEBUG: Current entities: {session['collected_entities']}")
+            print(f"DEBUG: Current intent: {session['intent']}")
+            # Keep collecting - don't clear entities or intent while in the middle of collecting
+        else:
+            # Initial stage with no entities collected yet
+            pass
+    else:
+        # Intelligent Mode ON: Keep reusing entities across messages (never clear)
+        print(f"DEBUG: Intelligent mode ON - PRESERVING entities for reuse")
+        print(f"DEBUG: Current entities: {session['collected_entities']}")
+        print(f"DEBUG: Current intent: {session['intent']}")
+        print(f"DEBUG: Current stage: {session['stage']}")
+        # Don't clear anything - keep entities and intent for reuse in subsequent messages
+        # But DO reset stage to initial if we just completed a search
+        if session["stage"] == "complete":
+            session["stage"] = "initial"
+            print(f"DEBUG: Reset stage from complete to initial for next query")
 
     try:
         # Pre-filter: Quick keyword-based intent detection for obvious cases
@@ -872,15 +1167,15 @@ Then extract relevant entities ONLY if they are EXPLICITLY mentioned:
 - year: Year of coverage (e.g., "2024", "2025")
 - county: County name (NOT state names - only specific counties like "Miami-Dade", "Broward", "Leon")
 - age: User's age (number only, not generic references like "my age")
-- coverage_item: Specific coverage type (e.g., "dental", "vision", "prescription drugs", "mental health")
+- coverage_item: Specific coverage type or cost aspect (e.g., "dental", "vision", "prescription drugs", "mental health", "deductible", "copay", "coinsurance", "out of pocket")
 - subtype: Subtype or specific aspect of coverage (e.g., "preventive care", "specialist visits")
 - provider_name: Name of doctor or hospital (e.g., "Dr. Smith", "Memorial Hospital")
 - specialty: Medical specialty (e.g., "cardiology", "pediatrics", "dermatology")
 - features: Plan features to compare (e.g., "premiums", "deductibles", "copays")
-- topic: Topic or subject matter for FAQ or News. 
-  * For FAQ: Extract ONLY the concept name, not question words. "what is coinsurance?" → "coinsurance", "explain deductible" → "deductible"
-  * For News: Extract the news topic/focus. "Florida health insurance news" → "health insurance", "ACA subsidy updates" → "ACA subsidies", "Medicare changes" → "Medicare"
-  * Examples: "coinsurance", "deductible", "copay", "HMO", "PPO", "open enrollment", "subsidies", "Medicare", "Medicaid"
+- topic: Topic or subject matter for FAQ or News (use ONLY for FAQ/News intent, NOT for coverage cost aspects).
+  * For FAQ: Extract ONLY the concept name, not question words. "what is HMO?" → "HMO", "explain open enrollment" → "open enrollment"
+  * For News: Extract the news topic/focus. "Florida health insurance news" → "health insurance", "ACA subsidy updates" → "ACA subsidies"
+  * Examples: "HMO", "PPO", "open enrollment", "subsidies", "Medicare", "Medicaid", "qualifying life events"
 - state: State name (e.g., "Florida", "Texas", "California")
 - income: Annual income (number only, extract just the number without $ or commas)
 
@@ -922,28 +1217,33 @@ Return JSON only:
         print(f"Current session stage: {session['stage']}")
         print(f"Current collected entities BEFORE merge: {session['collected_entities']}")
 
-        # Only update intent if we're not already collecting for an intent
+        # Only update intent if we're starting fresh (no current intent)
+        # NEVER override an existing intent during the collecting stage
         # This preserves intent when user is answering entity collection questions
-        if session["stage"] != "collecting" or not session["intent"]:
+        if session["stage"] == "collecting" and session["intent"]:
+            # We're in the middle of collecting - PRESERVE the existing intent
+            print(f"DEBUG: Preserving existing intent '{session['intent']}' during collection (ignoring Gemini-detected '{intent}')")
+        else:
+            # We're starting a new query or have no intent yet
             # If intent changed from previous and we have old entities, ask user if they want to keep them
             if session["intent"] and session["intent"] != intent and session["collected_entities"]:
                 print(f"DEBUG: Intent changed from '{session['intent']}' to '{intent}'")
                 print(f"DEBUG: Found existing entities: {session['collected_entities']}")
-                
+
                 # Check if any of the old entities are relevant to the new intent
                 required_for_new_intent = REQUIRED_ENTITIES_BY_INTENT.get(intent, [])
                 reusable_entities = {k: v for k, v in session["collected_entities"].items() if k in required_for_new_intent}
-                
+
                 if reusable_entities:
                     print(f"DEBUG: Found reusable entities for new intent: {reusable_entities}")
-                    
+
                     # Create a friendly confirmation message
                     entity_descriptions = []
                     for key, value in reusable_entities.items():
                         entity_descriptions.append(f"{key.replace('_', ' ')}: '{value}'")
-                    
+
                     confirmation_msg = f"I see you were asking about {', '.join(entity_descriptions)}. Would you like me to use this for your {intent.lower()} query, or would you prefer to start fresh?"
-                    
+
                     # Store in a special flag so we can handle the response
                     session["pending_entity_confirmation"] = {
                         "new_intent": intent,
@@ -951,24 +1251,23 @@ Return JSON only:
                         "confirmation_msg": confirmation_msg
                     }
                     session["stage"] = "confirming_entities"
-                    
+
                     return ConversationResponse(
                         session_id=session_id,
                         response=confirmation_msg,
                         requires_input=True,
                         next_question=confirmation_msg,
                         collected_entities=session["collected_entities"],
-                        status="collecting"
+                        status="collecting",
+                        intent=session["intent"]
                     )
                 else:
                     # No reusable entities, just clear and continue
                     print(f"DEBUG: No reusable entities found, clearing old entities")
                     session["collected_entities"] = {}
-            
+
             session["intent"] = intent
             print(f"DEBUG: Updated session intent to: {intent}")
-        else:
-            print(f"DEBUG: Keeping existing intent '{session['intent']}' (ignoring detected '{intent}' during collection)")
 
         # Merge new entities with collected ones
         # Also handle entity mapping for different intents
@@ -1050,7 +1349,8 @@ Return JSON only:
                 requires_input=True,
                 next_question=next_question,
                 collected_entities=session["collected_entities"],
-                status="collecting"
+                status="collecting",
+                intent=session["intent"]
             )
 
             # DEBUG: Log response being sent
@@ -1076,16 +1376,25 @@ Return JSON only:
 
             # Perform You.com search
             try:
-                print(f"DEBUG: Calling You.com API with query='{original_query}', intent='{intent}'")
-                search_results = search_with_you_api(original_query, session["collected_entities"], intent)
+                print(f"DEBUG: Calling You.com API with query='{original_query}', intent='{session['intent']}'")
+                search_results = search_with_you_api(original_query, session["collected_entities"], session["intent"])
                 print(f"DEBUG: You.com API returned {len(search_results)} results")
                 session["stage"] = "complete"
 
                 # Generate summary response based on intent
-                if intent in ["News", "FAQ"]:
+                if session["intent"] in ["PlanInfo", "CoverageDetail"]:
+                    # Synthesize answer from search snippets using Gemini
+                    print(f"DEBUG: Synthesizing answer from {len(search_results)} search results for {session['intent']}")
+                    summary = synthesize_answer_from_search(
+                        query=original_query,
+                        intent=session["intent"],
+                        search_results=search_results,
+                        collected_entities=session['collected_entities']
+                    )
+                elif session["intent"] in ["News", "FAQ"]:
                     summary = f"I found {len(search_results)} results for you:"
                 else:
-                    # For PlanInfo, Comparison, etc. show collected info
+                    # For Comparison, ProviderNetwork etc. show collected info
                     profile_parts = []
                     if session['collected_entities'].get('age'):
                         profile_parts.append(f"Age: {session['collected_entities'].get('age')}")
@@ -1113,7 +1422,8 @@ Return JSON only:
                     next_question=None,
                     collected_entities=session["collected_entities"],
                     search_results=search_results,
-                    status="complete"
+                    status="complete",
+                    intent=session["intent"]
                 )
 
             except Exception as e:
@@ -1123,7 +1433,8 @@ Return JSON only:
                     response=error_msg,
                     requires_input=False,
                     collected_entities=session["collected_entities"],
-                    status="error"
+                    status="error",
+                    intent=session["intent"]
                 )
 
     except Exception as e:

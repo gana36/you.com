@@ -8,10 +8,9 @@ export interface AgentStep {
 
 interface AgentRoutingProps {
   steps: AgentStep[];
-  currentAgent: string;
 }
 
-export const AgentRouting: React.FC<AgentRoutingProps> = ({ steps, currentAgent }) => {
+export const AgentRouting: React.FC<AgentRoutingProps> = ({ steps }) => {
   return (
     <div className="flex items-center gap-2 mb-4 p-3 bg-white border border-slate-200 rounded-lg">
       {steps.map((step, index) => (

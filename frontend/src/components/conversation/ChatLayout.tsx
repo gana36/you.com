@@ -4,11 +4,15 @@ import { Header } from './Header';
 interface ChatLayoutProps {
   children: React.ReactNode;
   autoScroll?: boolean;
+  intelligentMode?: boolean;
+  onToggleIntelligent?: (enabled: boolean) => void;
 }
 
 export const ChatLayout: React.FC<ChatLayoutProps> = ({
   children,
-  autoScroll = true
+  autoScroll = true,
+  intelligentMode = true,
+  onToggleIntelligent
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -21,7 +25,10 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   return (
     <>
       {/* Header */}
-      <Header />
+      <Header
+        intelligentMode={intelligentMode}
+        onToggleIntelligent={onToggleIntelligent || (() => {})}
+      />
 
       {/* Chat Area */}
       <div

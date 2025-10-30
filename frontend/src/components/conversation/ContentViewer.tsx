@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { X, Calendar, Globe, MapPin, Phone, Mail, ExternalLink, AlertCircle, Loader2 } from 'lucide-react';
+import React, { useEffect } from 'react';
+import { X, Globe, MapPin, Phone, Mail, ExternalLink, Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
 export type ContentType = 'news' | 'provider' | 'plan' | 'faq';
@@ -67,11 +67,9 @@ interface ContentViewerProps {
 }
 
 export const ContentViewer: React.FC<ContentViewerProps> = ({ isOpen, onClose, content }) => {
-  const [iframeError, setIframeError] = useState(false);
-
-  // Reset iframe error when content changes or viewer closes
+  // Reset state when content changes or viewer closes
   useEffect(() => {
-    setIframeError(false);
+    // State reset logic if needed
   }, [content, isOpen]);
 
   if (!isOpen || !content) return null;
@@ -178,7 +176,7 @@ export const ContentViewer: React.FC<ContentViewerProps> = ({ isOpen, onClose, c
               )}
 
               {/* Excerpts from original - integrated naturally */}
-              {hasSnippets && (
+              {hasSnippets && content.snippets && (
                 <div className="my-8 space-y-6">
                   {content.snippets.map((snippet, idx) => (
                     <p key={idx} className="text-base text-gray-800 leading-relaxed font-serif">
