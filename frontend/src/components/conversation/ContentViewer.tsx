@@ -101,13 +101,13 @@ export const ContentViewer: React.FC<ContentViewerProps> = ({ isOpen, onClose, c
         return (
           <article className="max-w-3xl mx-auto">
             {/* Article Header */}
-            <header className="mb-6">
-              <h1 className="text-3xl font-serif font-bold text-gray-900 mb-4 leading-tight">
+            <header className="mb-4 sm:mb-6">
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-serif font-bold text-gray-900 mb-3 sm:mb-4 leading-tight">
                 {content.headline || content.title || 'Article'}
               </h1>
               
               {/* Metadata bar - Google style */}
-              <div className="flex items-center gap-3 text-sm text-gray-600 pb-4 mb-4 border-b border-gray-200">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-gray-600 pb-3 sm:pb-4 mb-3 sm:mb-4 border-b border-gray-200">
                 <a 
                   href={content.url}
                   target="_blank"
@@ -681,25 +681,25 @@ export const ContentViewer: React.FC<ContentViewerProps> = ({ isOpen, onClose, c
       />
       
       {/* Slide-in Drawer from Right */}
-      <div className="fixed right-0 top-0 bottom-0 w-full max-w-drawer bg-white shadow-xl z-50 flex flex-col border-l border-gray-200 animate-slide-in">
+      <div className="fixed right-0 top-0 bottom-0 w-full sm:max-w-drawer bg-white shadow-xl z-50 flex flex-col sm:border-l border-gray-200 animate-slide-in">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-gray-900 font-medium">Content Viewer</h2>
+        <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 flex items-center justify-between">
+          <h2 className="text-gray-900 font-medium text-base sm:text-lg">Content Viewer</h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+            className="text-gray-400 hover:text-gray-600 transition-colors p-2 -mr-2"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Scrollable content */}
-        <div className="flex-1 overflow-y-auto px-6 py-6">
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-6">
           {renderContent()}
         </div>
 
         {/* Footer disclaimer */}
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
+        <div className="px-4 sm:px-6 py-3 sm:py-4 bg-gray-50 border-t border-gray-200">
           <p className="text-xs text-gray-600">
             All information is sourced from verified health insurance providers and official government websites. 
             Always verify details directly with your insurance provider.

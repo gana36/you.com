@@ -60,11 +60,11 @@ export const PlanComparisonTable: React.FC<PlanComparisonTableProps> = ({
         <table className="w-full">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200">
-              <th className="px-5 py-4 text-left text-xs font-medium text-gray-700">Feature</th>
+              <th className="px-3 sm:px-5 py-3 sm:py-4 text-left text-xs font-medium text-gray-700 sticky left-0 bg-gray-50 z-10">Feature</th>
               {detailedPlans.map((plan) => {
                 const isRecommended = plan.id === recommendedPlanId;
                 return (
-                  <th key={plan.id} className="px-5 py-4 text-left min-w-[200px]">
+                  <th key={plan.id} className="px-3 sm:px-5 py-3 sm:py-4 text-left min-w-[180px] sm:min-w-[200px]">
                     <div className="space-y-2">
                       <div>
                         <div className="font-semibold text-gray-900 text-sm">{plan.name}</div>
@@ -80,10 +80,11 @@ export const PlanComparisonTable: React.FC<PlanComparisonTableProps> = ({
                   </th>
                 );
               })}
-              <th className="px-5 py-4 text-center min-w-[120px]">
-                <button className="inline-flex items-center gap-1 px-3 py-1.5 text-xs text-[#2563EB] hover:bg-[#2563EB]/10 rounded-full transition-colors">
-                  <Plus className="w-4 h-4" />
-                  Add plan
+              <th className="px-3 sm:px-5 py-3 sm:py-4 text-center min-w-[100px] sm:min-w-[120px]">
+                <button className="inline-flex items-center gap-1 px-2 sm:px-3 py-1 sm:py-1.5 text-xs text-[#2563EB] hover:bg-[#2563EB]/10 rounded-full transition-colors">
+                  <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">Add plan</span>
+                  <span className="sm:hidden">Add</span>
                 </button>
               </th>
             </tr>
@@ -91,13 +92,13 @@ export const PlanComparisonTable: React.FC<PlanComparisonTableProps> = ({
           <tbody>
             {rows.map((row, idx) => (
               <tr key={idx} className="border-b border-gray-100 last:border-0">
-                <td className="px-5 py-3 text-sm font-medium text-gray-700">{row.label}</td>
+                <td className="px-3 sm:px-5 py-2.5 sm:py-3 text-xs sm:text-sm font-medium text-gray-700 sticky left-0 bg-white z-10">{row.label}</td>
                 {detailedPlans.map((plan) => (
-                  <td key={plan.id} className="px-5 py-3 text-sm text-gray-900">
+                  <td key={plan.id} className="px-3 sm:px-5 py-2.5 sm:py-3 text-xs sm:text-sm text-gray-900">
                     {row.getValue(plan)}
                   </td>
                 ))}
-                <td className="px-5 py-3"></td>
+                <td className="px-3 sm:px-5 py-2.5 sm:py-3"></td>
               </tr>
             ))}
           </tbody>
