@@ -13,13 +13,17 @@ An intelligent, conversational AI assistant for health insurance plan search, co
 - FastAPI - Modern Python web framework
 - Google Gemini 2.0 Flash - Intent detection and entity extraction
 - You.com Search API - Real-time web and news search
-- Python 3.8+ - Core language
+- Python 3.11+ - Core language
+- Docker - Containerization
+- AWS ECR - Container registry
+- AWS App Runner - Serverless container hosting
 
 **Frontend:**
 - React 18 - UI framework
 - TypeScript - Type-safe development
 - Tailwind CSS - Styling
 - Vite - Build tool and dev server
+- AWS Amplify - Frontend hosting and deployment
 
 **Data Sources:**
 - CMS/Healthcare.gov API - Official marketplace plan data
@@ -389,6 +393,296 @@ npm run dev
 ```
 
 UI will be available at: **http://localhost:3001**
+
+## Deployment
+
+### Production Deployment Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    AWS Cloud                             │
+│                                                          │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │           Frontend (AWS Amplify)                  │  │
+│  │  • Hosted React App                               │  │
+│  │  • CDN Distribution                               │  │
+│  │  • HTTPS Enabled                                  │  │
+│  └────────────────┬─────────────────────────────────┘  │
+│                   │                                      │
+│                   │ HTTPS/CORS                          │
+│                   ▼                                      │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │         Backend (AWS App Runner)                  │  │
+│  │  • Docker Container from ECR                      │  │
+│  │  • Auto-scaling                                   │  │
+│  │  • Environment Variables (Secrets)                │  │
+│  │  • Health Checks                                  │  │
+│  └──────────────────────────────────────────────────┘  │
+│                                                          │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │      Amazon ECR (Container Registry)              │  │
+│  │  • Docker Images                                  │  │
+│  │  • Version Tags                                   │  │
+│  └──────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Backend Deployment (AWS App Runner)
+
+#### Prerequisites
+- AWS Account with appropriate IAM permissions
+- AWS CLI installed and configured
+- Docker installed locally
+
+#### Step 1: Create ECR Repository
+
+```bash
+# Create ECR repository
+aws ecr create-repository --repository-name youcom-backend --region us-east-1
+
+# Authenticate Docker to ECR
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <YOUR_AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com
+```
+
+#### Step 2: Build and Push Docker Image
+
+```bash
+# Navigate to backend directory
+cd backend
+
+# Build Docker image
+docker build -t youcom-backend .
+
+# Tag the image
+docker tag youcom-backend:latest <YOUR_AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/youcom-backend:latest
+
+# Push to ECR
+docker push <YOUR_AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/youcom-backend:latest
+```
+
+#### Step 3: Deploy to App Runner
+
+**Option A: Using AWS Console (Recommended for first deployment)**
+
+1. Go to AWS App Runner Console
+2. Click "Create service"
+3. **Source:**
+   - Repository type: Container registry
+   - Provider: Amazon ECR
+   - Container image URI: `<YOUR_AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/youcom-backend:latest`
+   - Deployment trigger: Manual
+4. **Service settings:**
+   - Service name: `youcom-backend`
+   - Port: `8080`
+   - CPU: 1 vCPU
+   - Memory: 2 GB
+5. **Environment variables:**
+   - `GEMINI_API_KEY`: Your Google Gemini API key
+   - `you_api`: Your You.com API key
+   - `FRONTEND_URL`: Your Amplify frontend URL (for CORS)
+6. Click "Create & deploy"
+
+**Option B: Using AWS CLI**
+
+```bash
+# Create App Runner service
+aws apprunner create-service \
+  --service-name youcom-backend \
+  --source-configuration file://source-config.json \
+  --instance-configuration file://instance-config.json
+```
+
+#### Step 4: Configure Environment Variables
+
+**Via AWS Console:**
+1. Go to App Runner → Your Service → Configuration
+2. Navigate to "Environment variables"
+3. Add the following:
+   - `GEMINI_API_KEY`
+   - `you_api`
+   - `FRONTEND_URL`
+4. Click "Save"
+
+**Important:** App Runner will automatically restart after adding environment variables.
+
+#### Step 5: Update CORS Configuration
+
+After deployment, update `backend/main.py` with your production frontend URL:
+
+```python
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",  # Local development
+        "https://your-amplify-url.amplifyapp.com",  # Production
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+Then rebuild and redeploy the Docker image.
+
+#### Backend URL
+
+After deployment, App Runner provides a URL like:
+```
+https://xxxxxxxxxx.us-east-1.awsapprunner.com
+```
+
+This URL remains stable across deployments.
+
+---
+
+### Frontend Deployment (AWS Amplify)
+
+#### Prerequisites
+- AWS Account
+- Amplify CLI installed: `npm install -g @aws-amplify/cli`
+- AWS credentials configured
+
+#### Step 1: Initialize Amplify
+
+```bash
+# Navigate to frontend directory
+cd frontend
+
+# Initialize Amplify (first time only)
+amplify init
+```
+
+Follow the prompts:
+- Project name: `youcom-frontend`
+- Environment: `dev` or `prod`
+- Default editor: Your preferred editor
+- App type: `javascript`
+- Framework: `react`
+- Source directory: `src`
+- Distribution directory: `dist` (Vite builds to dist/)
+- Build command: `npm run build`
+- Start command: `npm run dev`
+
+#### Step 2: Add Hosting
+
+```bash
+# Add hosting service (first time only)
+amplify add hosting
+```
+
+Choose:
+- Hosting with Amplify Console
+- Manual deployment
+
+#### Step 3: Update Backend URL
+
+Update `frontend/src/config.ts` with your App Runner backend URL:
+
+```typescript
+export const API_BASE_URL = "https://your-app-runner-url.us-east-1.awsapprunner.com";
+```
+
+#### Step 4: Configure Build Settings
+
+Update `amplify configure project` if needed to ensure:
+- Distribution Directory Path: `dist` (not `build`)
+
+#### Step 5: Deploy
+
+```bash
+# Build and deploy
+amplify publish
+```
+
+This will:
+1. Build your React app (`npm run build`)
+2. Upload build artifacts to Amplify
+3. Deploy to CDN
+4. Provide a public URL
+
+#### Frontend URL
+
+After deployment, Amplify provides a URL like:
+```
+https://dev.xxxxxxxxxxxx.amplifyapp.com
+```
+
+---
+
+### Security Considerations
+
+#### ✅ DO:
+- ✅ Store API keys in environment variables (AWS App Runner console)
+- ✅ Use `.dockerignore` to exclude `.env` from Docker images
+- ✅ Keep `.env` in `.gitignore`
+- ✅ Use HTTPS for all production traffic (automatic with Amplify/App Runner)
+- ✅ Configure CORS to only allow your frontend domain
+
+#### ❌ DON'T:
+- ❌ Commit `.env` files to git
+- ❌ Hardcode API keys in source code
+- ❌ Use `allow_origins=["*"]` in production
+- ❌ Include AWS credentials in Docker images
+
+---
+
+### Updating Deployments
+
+#### Backend Updates
+
+```bash
+# Rebuild and push new image
+cd backend
+docker build -t youcom-backend .
+docker tag youcom-backend:latest <YOUR_AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/youcom-backend:latest
+docker push <YOUR_AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/youcom-backend:latest
+
+# App Runner auto-deploys the new image
+```
+
+**Note:** Your App Runner URL stays the same across updates.
+
+#### Frontend Updates
+
+```bash
+cd frontend
+amplify publish
+```
+
+**Note:** Your Amplify URL stays the same across updates.
+
+---
+
+### Monitoring and Logs
+
+#### Backend Logs (App Runner)
+```bash
+# View logs via AWS Console
+AWS Console → App Runner → Your Service → Logs
+
+# Or via CloudWatch
+AWS Console → CloudWatch → Log Groups → /aws/apprunner/youcom-backend
+```
+
+#### Frontend Monitoring (Amplify)
+```bash
+# View build logs
+AWS Console → Amplify → Your App → Build logs
+```
+
+---
+
+### Cost Estimation
+
+**AWS App Runner:**
+- ~$25-50/month for basic usage (1 vCPU, 2GB RAM)
+- Free tier: First 3 months
+
+**AWS Amplify:**
+- Free tier: 1000 build minutes/month, 15GB storage
+- ~$0-10/month for typical usage
+
+**Total estimated cost:** $25-60/month for production deployment
 
 ## Project Structure
 
