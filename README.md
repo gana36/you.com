@@ -1,4 +1,4 @@
-# 🏥 Health Insurance AI Assistant
+# Health Insurance AI Assistant
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
@@ -7,27 +7,46 @@
 
 An intelligent, conversational AI assistant for health insurance plan search, comparison, and provider lookup. Built with FastAPI, Google Gemini AI, and React, this system provides transparent multi-step reasoning and verified data from official sources.
 
-## ✨ Features
+## Tech Stack
 
-### 🤖 Intelligent Conversation
+**Backend:**
+- FastAPI - Modern Python web framework
+- Google Gemini 2.0 Flash - Intent detection and entity extraction
+- You.com Search API - Real-time web and news search
+- Python 3.8+ - Core language
+
+**Frontend:**
+- React 18 - UI framework
+- TypeScript - Type-safe development
+- Tailwind CSS - Styling
+- Vite - Build tool and dev server
+
+**Data Sources:**
+- CMS/Healthcare.gov API - Official marketplace plan data
+- Policy SBC Documents - Detailed coverage information
+- Provider Network APIs - Doctor and hospital data
+
+## Features
+
+### Intelligent Conversation
 - **Intent Detection**: Automatically classifies user queries (Plan Info, Comparison, Coverage Details, Provider Search, FAQ, News)
 - **Progressive Entity Collection**: Asks one clarifying question at a time for natural conversation flow
 - **Context-Aware**: Maintains conversation history and adapts to user responses
 - **Multi-Source Search**: Combines local datasets with You.com API for comprehensive results
 
-### 🎯 Agentic UI
+### Agentic UI
 - **Transparent Thinking**: Shows AI reasoning process in real-time
 - **Query Construction**: Displays how search queries are being built
 - **Source Verification**: All results include verified source badges with URLs
 - **Interactive Entity Collection**: Inline forms for missing information
 
-### 📊 Rich Data Sources
+### Rich Data Sources
 - **CMS Marketplace Data**: Official pricing and plan details from Healthcare.gov
 - **Policy Documents**: Detailed coverage information from insurer SBCs
 - **Provider Networks**: Doctor and hospital network information
 - **Real-time Web Search**: Latest news and updates via You.com API
 
-## 🏗️ Architecture
+## Architecture
 
 ### System Overview
 
@@ -61,7 +80,7 @@ An intelligent, conversational AI assistant for health insurance plan search, co
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## 🔍 How Dataset Search Works
+## How Dataset Search Works
 
 ### Overview
 
@@ -221,7 +240,107 @@ Results from all three datasets are:
 ✅ **Extensible**: Easy to add new datasets or scoring rules  
 ✅ **Fast**: In-memory search with no database overhead  
 
-## 🚀 Quick Start
+## You.com API Integration
+
+### Overview
+
+The system integrates with **You.com Search API** to provide real-time web search results for queries that require current information, news, or data beyond the local datasets.
+
+### API Details
+
+**Endpoint Used:** `https://api.ydc-index.io/v1/search`  
+**Method:** GET  
+**Authentication:** API Key via `X-API-Key` header
+
+### Features
+
+- **Web Search**: Returns up to 10 relevant web results
+- **News Search**: Access to latest news articles (available in API response)
+- **Rich Metadata**: Includes snippets, thumbnails, page age, and authors
+- **Context Enhancement**: Automatically enriches queries with user entities (age, income, county)
+
+### Implementation
+
+Located in `backend/main.py` - `search_with_you_api()` function:
+
+```python
+def search_with_you_api(query: str, entities: Dict[str, Any], intent: str = "PlanInfo"):
+    """Search using You.com API with collected user information."""
+    
+    # Build enhanced query with user context
+    enhanced_query = query
+    if intent in ["PlanInfo", "Comparison", "ProviderNetwork"]:
+        if entities.get("age"):
+            enhanced_query += f" for {entities['age']} year old"
+        if entities.get("income"):
+            enhanced_query += f" with annual income ${entities['income']}"
+        if entities.get("county"):
+            enhanced_query += f" in {entities['county']} county"
+    
+    # API request
+    url = "https://api.ydc-index.io/v1/search"
+    headers = {"X-API-Key": you_api_key}
+    params = {"query": enhanced_query, "count": 10}
+    
+    response = requests.get(url, headers=headers, params=params, timeout=10)
+    data = response.json()
+    
+    # Extract web results
+    web_results = data.get("results", {}).get("web", [])
+```
+
+### Response Format
+
+The You.com API returns structured data:
+
+```json
+{
+  "results": {
+    "web": [
+      {
+        "title": "Plan Title",
+        "description": "Plan description...",
+        "url": "https://example.com/plan",
+        "snippets": ["Relevant text snippet..."],
+        "thumbnail_url": "https://example.com/thumb.jpg",
+        "page_age": "2024-01-15",
+        "authors": ["Author Name"]
+      }
+    ],
+    "news": [...]
+  },
+  "metadata": {...}
+}
+```
+
+### Use Cases
+
+1. **General Queries**: FAQ-type questions about health insurance
+2. **News Updates**: Latest changes to ACA, open enrollment dates
+3. **Plan Updates**: Recent plan modifications not in local datasets
+4. **Supplemental Information**: Additional context for plan comparisons
+
+### Query Enhancement
+
+The system automatically enhances queries with user context:
+
+**Original Query:** "affordable health plans"
+
+**Enhanced Query:** "affordable health plans for 43 year old with annual income $45000 in Broward county"
+
+This provides more personalized and relevant search results.
+
+### Configuration
+
+Add your You.com API key to `.env`:
+
+```bash
+you_api=your_you_api_key_here
+```
+
+**Note:** The You.com API integration is optional. If no API key is provided, the system will only use local datasets.
+
+## Quick Start
 
 ### Prerequisites
 
@@ -271,7 +390,7 @@ npm run dev
 
 UI will be available at: **http://localhost:3001**
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 youApi/
@@ -307,7 +426,7 @@ youApi/
 └── README.md                       # This file
 ```
 
-## 🔧 Configuration
+## Configuration
 
 ### Intent Configuration
 
@@ -337,7 +456,7 @@ Edit `backend/config/intent_config.json` to add new intents or modify entity req
 2. Add loading logic in `load_datasets()` function
 3. Add scoring logic in `search_datasets()` function
 
-## 🧪 API Endpoints
+## API Endpoints
 
 ### POST `/chat`
 Conversational endpoint with entity collection
@@ -372,7 +491,7 @@ General search with web results
 
 See full API documentation at `/docs` when running the server.
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please follow these steps:
 
@@ -389,7 +508,7 @@ Contributions are welcome! Please follow these steps:
 - Add tests for new features
 - Update documentation as needed
 
-## 📝 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](#license-text) file below for details.
 
@@ -419,7 +538,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - **Google Gemini AI** for natural language understanding
 - **FastAPI** for the excellent web framework
@@ -427,10 +546,10 @@ SOFTWARE.
 - **CMS/Healthcare.gov** for official plan data
 - **You.com** for web search capabilities
 
-## 📧 Contact
+## Contact
 
 For questions or support, please open an issue on GitHub.
 
 ---
 
-**Built with ❤️ for better healthcare transparency**
+**Built for better healthcare transparency**
