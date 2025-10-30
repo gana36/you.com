@@ -805,7 +805,7 @@ function App() {
                   {isComparison && data.raw_results?.dataset_results && (
                     <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
                       <div className="px-6 py-4 border-b border-gray-200">
-                        <h3 className="text-base font-semibold text-gray-900">Quick Comparison</h3>
+                        <h3 className="text-base font-semibold text-gray-900">Quick Details</h3>
                       </div>
                       <div className="overflow-x-auto">
                         <table className="w-full">
@@ -901,6 +901,12 @@ function App() {
       type: 'agent',
       content: resultContent
     }]);
+    
+    // Clear session and intent so next query starts fresh
+    console.log('🔄 Clearing session - next conversation will be fresh');
+    setSessionId(null);
+    setCurrentIntent(null);
+    setThinkingMessageId(null);
     
     // Open evidence drawer if we have steps
     if (evidenceStepsToShow.length > 0) {

@@ -1156,7 +1156,7 @@ Format your response as JSON:
     "Another finding with concrete data",
     "3-5 total findings with real numbers"
   ],
-  "recommendations": "Actionable next steps based on the data"
+  "recommendations": "Actionable next steps in MARKDOWN BULLET POINTS format. Use numbered list (1. 2. 3.) or bullet points (- ) with **bold** for emphasis."
 }}
 
 Example formats based on question type:
@@ -1192,6 +1192,15 @@ For comparison questions:
 - **Out-of-Pocket Max**: $9,100
 - **PCP Copay**: $35
 - **Network**: Larger (EPO)"
+
+Example of good recommendations format:
+"**Next Steps:**
+
+1. **Compare plans** on HealthCare.gov to find the best fit for your needs and budget
+2. **Consider your healthcare usage** when choosing between lower premiums/higher deductibles vs higher premiums/lower deductibles
+3. **Check provider networks** to ensure your preferred doctors are in-network
+4. **Review coverage details** for services you use most frequently
+5. **Enroll during open enrollment** (November 1 - January 15)"
 
 Make it scannable, data-rich, and use bullet points extensively!
 """
