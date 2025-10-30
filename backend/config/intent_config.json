@@ -1,28 +1,10 @@
 {
   "intents": {
-    "PlanInfo": {
-      "description": "User wants information about a specific health insurance plan",
-      "required_entities": ["plan_name", "insurer", "year", "county", "age"],
-      "optional_entities": ["income", "family_size"],
-      "entity_order": ["plan_name", "insurer", "year", "county", "age"]
-    },
-    "CoverageDetail": {
-      "description": "User wants details about what a plan covers",
-      "required_entities": ["plan_name", "insurer", "year", "coverage_item", "subtype", "county"],
-      "optional_entities": [],
-      "entity_order": ["plan_name", "insurer", "year", "coverage_item", "subtype", "county"]
-    },
-    "ProviderNetwork": {
-      "description": "User wants to know about doctors/hospitals in a plan's network",
-      "required_entities": ["provider_name", "specialty", "plan_name", "insurer", "county"],
-      "optional_entities": [],
-      "entity_order": ["provider_name", "specialty", "plan_name", "insurer", "county"]
-    },
-    "Comparison": {
-      "description": "User wants to compare multiple plans",
-      "required_entities": ["plan_name", "insurer", "year", "county"],
-      "optional_entities": ["age", "features"],
-      "entity_order": ["plan_name", "insurer", "year", "county"]
+    "General": {
+      "description": "User wants information about health insurance plans, coverage, providers, or comparisons",
+      "required_entities": [],
+      "optional_entities": ["plan_name", "insurer", "year", "county", "age", "coverage_item", "provider_name", "specialty", "state"],
+      "entity_order": []
     },
     "FAQ": {
       "description": "User has a general question about health insurance",

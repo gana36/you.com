@@ -1,0 +1,488 @@
+[
+    {
+      "id": "provider_dr_garcia_miami_001",
+      "source": "provider_api",
+      "provider_name": "Dr. Maria Garcia",
+      "provider_type": "Physician",
+      "specialty": "Family Medicine",
+      "subspecialty": [
+        "Geriatrics",
+        "Preventive Medicine"
+      ],
+      "npi": "1245789654",
+      "taxonomy_code": "207Q00000X",
+      "gender": "Female",
+      "languages": [
+        "English",
+        "Spanish"
+      ],
+      "accepting_new_patients": true,
+      "telehealth_available": true,
+      "plan_networks": [
+        {
+          "plan_id": "30252FL0070025M03",
+          "plan_name": "Florida Blue myBlue Silver HMO 2025",
+          "issuer_name": "Florida Blue",
+          "network_tier": "preferred",
+          "in_network": true
+        },
+        {
+          "plan_id": "86052FL0040005",
+          "plan_name": "Molina Marketplace Silver 2025",
+          "issuer_name": "Molina Healthcare",
+          "network_tier": "standard",
+          "in_network": true
+        },
+        {
+          "plan_id": "40220FL0080025",
+          "plan_name": "UnitedHealthcare Silver Compass 2025",
+          "issuer_name": "UnitedHealthcare",
+          "network_tier": "standard",
+          "in_network": true
+        }
+      ],
+      "location": {
+        "practice_name": "Midtown Family Medical Center",
+        "address_line1": "2500 Biscayne Boulevard",
+        "address_line2": "Suite 400",
+        "city": "Miami",
+        "state": "FL",
+        "zip_code": "33137",
+        "county": "Miami-Dade",
+        "phone": "(305) 555-0123",
+        "fax": "(305) 555-0124",
+        "email": "info@midtownfamilymed.com",
+        "website": "https://www.midtownfamilymed.com"
+      },
+      "credentials": {
+        "medical_school": "University of Miami Miller School of Medicine",
+        "residency": "Jackson Memorial Hospital - Family Medicine",
+        "board_certifications": [
+          "American Board of Family Medicine"
+        ],
+        "years_in_practice": 15,
+        "hospital_affiliations": [
+          "Jackson Memorial Hospital",
+          "Baptist Hospital of Miami"
+        ]
+      },
+      "practice_info": {
+        "group_practice": true,
+        "solo_practice": false,
+        "hospital_based": false,
+        "office_hours": {
+          "monday": "8:00 AM - 5:00 PM",
+          "tuesday": "8:00 AM - 5:00 PM",
+          "wednesday": "8:00 AM - 5:00 PM",
+          "thursday": "8:00 AM - 7:00 PM",
+          "friday": "8:00 AM - 3:00 PM",
+          "saturday": "9:00 AM - 12:00 PM",
+          "sunday": "Closed"
+        },
+        "wheelchair_accessible": true,
+        "parking_available": true,
+        "public_transportation_access": true
+      },
+      "quality_metrics": {
+        "patient_satisfaction_score": 4.7,
+        "num_reviews": 342,
+        "wait_time_avg_minutes": 15,
+        "medicare_quality_star_rating": 4.5
+      },
+      "services_offered": [
+        "Annual physicals",
+        "Chronic disease management",
+        "Immunizations",
+        "Preventive care",
+        "Minor procedures",
+        "Telemedicine visits",
+        "Same-day appointments"
+      ],
+      "last_verified": "2025-01-15",
+      "data_last_updated": "2025-01-15T10:00:00Z",
+      "fhir_version": "R4",
+      "resource_type": "Practitioner"
+    },
+    {
+      "id": "provider_dr_johnson_tampa_002",
+      "source": "provider_api",
+      "provider_name": "Dr. Robert Johnson",
+      "provider_type": "Physician",
+      "specialty": "Cardiology",
+      "subspecialty": [
+        "Interventional Cardiology",
+        "Heart Failure"
+      ],
+      "npi": "1356892347",
+      "taxonomy_code": "207RC0000X",
+      "gender": "Male",
+      "languages": [
+        "English"
+      ],
+      "accepting_new_patients": true,
+      "telehealth_available": false,
+      "plan_networks": [
+        {
+          "plan_id": "30252FL0070024J01",
+          "plan_name": "Florida Blue BlueOptions Bronze PPO 2025",
+          "issuer_name": "Florida Blue",
+          "network_tier": "standard",
+          "in_network": true
+        },
+        {
+          "plan_id": "40220FL0080030",
+          "plan_name": "UnitedHealthcare Gold Navigator 2025",
+          "issuer_name": "UnitedHealthcare",
+          "network_tier": "preferred",
+          "in_network": true
+        }
+      ],
+      "location": {
+        "practice_name": "Tampa Bay Heart Institute",
+        "address_line1": "3500 E Fletcher Avenue",
+        "address_line2": "",
+        "city": "Tampa",
+        "state": "FL",
+        "zip_code": "33613",
+        "county": "Hillsborough",
+        "phone": "(813) 555-0234",
+        "fax": "(813) 555-0235",
+        "email": "appointments@tampaheartinstitute.com",
+        "website": "https://www.tampaheartinstitute.com"
+      },
+      "credentials": {
+        "medical_school": "University of Florida College of Medicine",
+        "residency": "University of South Florida - Internal Medicine",
+        "fellowship": "Emory University - Interventional Cardiology",
+        "board_certifications": [
+          "American Board of Internal Medicine - Cardiology",
+          "American Board of Internal Medicine - Interventional Cardiology"
+        ],
+        "years_in_practice": 22,
+        "hospital_affiliations": [
+          "Tampa General Hospital",
+          "St. Joseph's Hospital"
+        ]
+      },
+      "practice_info": {
+        "group_practice": true,
+        "solo_practice": false,
+        "hospital_based": false,
+        "office_hours": {
+          "monday": "7:00 AM - 5:00 PM",
+          "tuesday": "7:00 AM - 5:00 PM",
+          "wednesday": "7:00 AM - 5:00 PM",
+          "thursday": "7:00 AM - 5:00 PM",
+          "friday": "7:00 AM - 3:00 PM",
+          "saturday": "Closed",
+          "sunday": "Closed"
+        },
+        "wheelchair_accessible": true,
+        "parking_available": true,
+        "public_transportation_access": false
+      },
+      "quality_metrics": {
+        "patient_satisfaction_score": 4.8,
+        "num_reviews": 518,
+        "wait_time_avg_minutes": 25,
+        "medicare_quality_star_rating": 5.0
+      },
+      "services_offered": [
+        "Cardiac catheterization",
+        "Angioplasty and stenting",
+        "Echocardiography",
+        "Stress testing",
+        "Heart failure management",
+        "Preventive cardiology"
+      ],
+      "last_verified": "2025-01-10",
+      "data_last_updated": "2025-01-10T14:30:00Z",
+      "fhir_version": "R4",
+      "resource_type": "Practitioner"
+    },
+    {
+      "id": "provider_memorial_imaging_miami_003",
+      "source": "provider_api",
+      "provider_name": "Memorial Imaging Center - Kendall",
+      "provider_type": "Facility",
+      "specialty": "Diagnostic Radiology",
+      "facility_type": "Outpatient Imaging Center",
+      "npi": "1478523698",
+      "taxonomy_code": "261QR0405X",
+      "accepting_new_patients": true,
+      "service_types": [
+        "MRI",
+        "CT Scan",
+        "X-Ray",
+        "Ultrasound",
+        "Mammography",
+        "DEXA Scan"
+      ],
+      "plan_networks": [
+        {
+          "plan_id": "30252FL0070025M03",
+          "plan_name": "Florida Blue myBlue Silver HMO 2025",
+          "issuer_name": "Florida Blue",
+          "network_tier": "value_choice",
+          "in_network": true
+        },
+        {
+          "plan_id": "48121FL0070036",
+          "plan_name": "Cigna Connect Silver 3600 2025",
+          "issuer_name": "Cigna Healthcare",
+          "network_tier": "standard",
+          "in_network": true
+        },
+        {
+          "plan_id": "40220FL0080025",
+          "plan_name": "UnitedHealthcare Silver Compass 2025",
+          "issuer_name": "UnitedHealthcare",
+          "network_tier": "standard",
+          "in_network": true
+        }
+      ],
+      "location": {
+        "practice_name": "Memorial Imaging Center - Kendall",
+        "address_line1": "8950 SW 107th Avenue",
+        "address_line2": "",
+        "city": "Miami",
+        "state": "FL",
+        "zip_code": "33176",
+        "county": "Miami-Dade",
+        "phone": "(305) 555-0345",
+        "fax": "(305) 555-0346",
+        "email": "scheduling@memorialimaging.com",
+        "website": "https://www.memorialimaging.com"
+      },
+      "facility_info": {
+        "accreditations": [
+          "American College of Radiology (ACR) Accredited",
+          "Radiological Society of North America",
+          "ACR Breast Imaging Center of Excellence"
+        ],
+        "equipment": {
+          "mri_units": 3,
+          "ct_scanners": 2,
+          "xray_rooms": 4,
+          "ultrasound_machines": 3,
+          "mammography_units": 2
+        },
+        "hours_of_operation": {
+          "monday": "7:00 AM - 9:00 PM",
+          "tuesday": "7:00 AM - 9:00 PM",
+          "wednesday": "7:00 AM - 9:00 PM",
+          "thursday": "7:00 AM - 9:00 PM",
+          "friday": "7:00 AM - 6:00 PM",
+          "saturday": "8:00 AM - 3:00 PM",
+          "sunday": "Closed"
+        },
+        "same_day_appointments": true,
+        "walk_ins_accepted": false,
+        "wheelchair_accessible": true,
+        "parking_available": true,
+        "parking_type": "Free on-site parking"
+      },
+      "radiologists_on_staff": 8,
+      "average_wait_time_minutes": 10,
+      "average_report_turnaround_hours": 24,
+      "patient_satisfaction_score": 4.6,
+      "last_verified": "2025-01-12",
+      "data_last_updated": "2025-01-12T09:00:00Z",
+      "fhir_version": "R4",
+      "resource_type": "Organization"
+    },
+    {
+      "id": "provider_dr_patel_orlando_004",
+      "source": "provider_api",
+      "provider_name": "Dr. Anjali Patel",
+      "provider_type": "Physician",
+      "specialty": "Psychiatry",
+      "subspecialty": [
+        "Adult Psychiatry",
+        "Anxiety Disorders",
+        "Mood Disorders"
+      ],
+      "npi": "1589632147",
+      "taxonomy_code": "2084P0800X",
+      "gender": "Female",
+      "languages": [
+        "English",
+        "Hindi",
+        "Gujarati"
+      ],
+      "accepting_new_patients": true,
+      "telehealth_available": true,
+      "plan_networks": [
+        {
+          "plan_id": "30252FL0070025M03",
+          "plan_name": "Florida Blue myBlue Silver HMO 2025",
+          "issuer_name": "Florida Blue",
+          "network_tier": "standard",
+          "in_network": true
+        },
+        {
+          "plan_id": "48121FL0070036",
+          "plan_name": "Cigna Connect Silver 3600 2025",
+          "issuer_name": "Cigna Healthcare",
+          "network_tier": "standard",
+          "in_network": true
+        },
+        {
+          "plan_id": "86052FL0040005",
+          "plan_name": "Molina Marketplace Silver 2025",
+          "issuer_name": "Molina Healthcare",
+          "network_tier": "standard",
+          "in_network": true
+        }
+      ],
+      "location": {
+        "practice_name": "Central Florida Behavioral Health",
+        "address_line1": "6900 Lake Ellenor Drive",
+        "address_line2": "Suite 201",
+        "city": "Orlando",
+        "state": "FL",
+        "zip_code": "32809",
+        "county": "Orange",
+        "phone": "(407) 555-0456",
+        "fax": "(407) 555-0457",
+        "email": "appointments@cfbhealth.com",
+        "website": "https://www.cfbhealth.com"
+      },
+      "credentials": {
+        "medical_school": "University of Central Florida College of Medicine",
+        "residency": "University of Florida - Psychiatry",
+        "board_certifications": [
+          "American Board of Psychiatry and Neurology"
+        ],
+        "years_in_practice": 9,
+        "hospital_affiliations": [
+          "AdventHealth Orlando",
+          "Orlando Regional Medical Center"
+        ]
+      },
+      "practice_info": {
+        "group_practice": true,
+        "solo_practice": false,
+        "hospital_based": false,
+        "office_hours": {
+          "monday": "9:00 AM - 6:00 PM",
+          "tuesday": "9:00 AM - 6:00 PM",
+          "wednesday": "9:00 AM - 6:00 PM",
+          "thursday": "9:00 AM - 6:00 PM",
+          "friday": "9:00 AM - 4:00 PM",
+          "saturday": "Closed",
+          "sunday": "Closed"
+        },
+        "evening_hours_available": true,
+        "wheelchair_accessible": true,
+        "parking_available": true,
+        "public_transportation_access": true
+      },
+      "quality_metrics": {
+        "patient_satisfaction_score": 4.9,
+        "num_reviews": 287,
+        "wait_time_avg_minutes": 8,
+        "telehealth_percentage": 65
+      },
+      "services_offered": [
+        "Medication management",
+        "Psychotherapy",
+        "Anxiety treatment",
+        "Depression treatment",
+        "ADHD evaluation and treatment",
+        "Telemedicine consultations"
+      ],
+      "insurance_notes": "Accepts most major insurance. Offers telehealth appointments for established and new patients.",
+      "last_verified": "2025-01-14",
+      "data_last_updated": "2025-01-14T11:30:00Z",
+      "fhir_version": "R4",
+      "resource_type": "Practitioner"
+    },
+    {
+      "id": "provider_jackson_memorial_hospital_005",
+      "source": "provider_api",
+      "provider_name": "Jackson Memorial Hospital",
+      "provider_type": "Facility",
+      "specialty": "General Acute Care Hospital",
+      "facility_type": "Hospital",
+      "npi": "1265478932",
+      "taxonomy_code": "282N00000X",
+      "hospital_type": "General Acute Care",
+      "trauma_level": "Level I Trauma Center",
+      "teaching_hospital": true,
+      "beds": 1550,
+      "plan_networks": [
+        {
+          "plan_id": "30252FL0070025M03",
+          "plan_name": "Florida Blue myBlue Silver HMO 2025",
+          "issuer_name": "Florida Blue",
+          "network_tier": "standard",
+          "in_network": true
+        },
+        {
+          "plan_id": "30252FL0070024J01",
+          "plan_name": "Florida Blue BlueOptions Bronze PPO 2025",
+          "issuer_name": "Florida Blue",
+          "network_tier": "standard",
+          "in_network": true
+        },
+        {
+          "plan_id": "40220FL0080025",
+          "plan_name": "UnitedHealthcare Silver Compass 2025",
+          "issuer_name": "UnitedHealthcare",
+          "network_tier": "standard",
+          "in_network": true
+        },
+        {
+          "plan_id": "86052FL0040005",
+          "plan_name": "Molina Marketplace Silver 2025",
+          "issuer_name": "Molina Healthcare",
+          "network_tier": "standard",
+          "in_network": true
+        }
+      ],
+      "location": {
+        "practice_name": "Jackson Memorial Hospital",
+        "address_line1": "1611 NW 12th Avenue",
+        "address_line2": "",
+        "city": "Miami",
+        "state": "FL",
+        "zip_code": "33136",
+        "county": "Miami-Dade",
+        "phone": "(305) 585-1111",
+        "emergency_phone": "(305) 585-6901",
+        "website": "https://www.jacksonhealth.org"
+      },
+      "services": {
+        "emergency_room": true,
+        "er_wait_time_avg_minutes": 35,
+        "urgent_care": false,
+        "inpatient_services": true,
+        "outpatient_services": true,
+        "surgery_center": true,
+        "cancer_center": true,
+        "maternity_services": true,
+        "nicu_level": "Level III",
+        "cardiac_services": true,
+        "transplant_center": true
+      },
+      "quality_ratings": {
+        "cms_hospital_rating": 3,
+        "leapfrog_grade": "B",
+        "patient_satisfaction_score": 3.8,
+        "readmission_rate": 15.2,
+        "mortality_rate_comparison": "As Expected"
+      },
+      "accreditations": [
+        "Joint Commission Accredited",
+        "Magnet Hospital for Nursing Excellence",
+        "Comprehensive Stroke Center",
+        "Level I Trauma Center"
+      ],
+      "insurance_accepted": "Accepts most major insurance including Medicare, Medicaid, and marketplace plans",
+      "last_verified": "2025-01-08",
+      "data_last_updated": "2025-01-08T16:00:00Z",
+      "fhir_version": "R4",
+      "resource_type": "Organization"
+    }
+  ]

@@ -5,15 +5,12 @@ import { ConversationMessage } from './components/conversation/ConversationMessa
 import { AgenticThinking } from './components/conversation/AgenticThinking';
 import { QueryConstructor } from './components/conversation/QueryConstructor';
 import { ProgressiveEntityCollector } from './components/conversation/ProgressiveEntityCollector';
-import { CompactPlanCard } from './components/results/CompactPlanCard';
-import { ProviderCard } from './components/results/ProviderCard';
 import { NewsCards } from './components/results/NewsCards';
 import { FAQCard } from './components/results/FAQCard';
-import { PlanComparisonTable } from './components/results/PlanComparisonTable';
-import { QuickActionChips } from './components/conversation/QuickActionChips';
 import { ContentViewer } from './components/conversation/ContentViewer';
 import { InlineReasoning } from './components/conversation/InlineReasoning';
-import { dummyPlans, dummyCounties, dummyProviders, dummyNews, dummyFAQs, dummyReasoningSteps, dummyFullContent } from './data/dummyData';
+import { ChevronRight } from 'lucide-react';
+import { dummyPlans, dummyCounties, dummyNews, dummyReasoningSteps } from './data/dummyData';
 import { API_BASE_URL } from './config';
 import { configService } from './services/configService';
 
@@ -167,7 +164,7 @@ function App() {
           updateThinkingStep(thinkingId, 'search', 'complete');
           
           // Show results immediately without another API call
-          showResultsFromSearch(thinkingId, intent, data.search_results, data.collected_entities);
+          showResultsFromSearch(thinkingId, intent, data.search_results, data.collected_entities, text);
         } else if (data.status === 'complete') {
           // Backend completed but no results yet - fetch them
           console.log('⚠️ Backend completed but NO search_results in response');
@@ -414,7 +411,7 @@ function App() {
     }, 800);
   };
 
-  const showResultsFromSearch = (messageId: string, intent: string, searchResults: any[], collectedEntities: any = {}) => {
+  const showResultsFromSearch = (messageId: string, intent: string, searchResults: any[], collectedEntities: any = {}, originalQuery: string = '') => {
     // Remove thinking message
     setMessages(prev => prev.filter(msg => msg.id !== messageId));
 
@@ -614,177 +611,165 @@ function App() {
           <InlineReasoning steps={reasoningSteps} />
         </div>
       );
-    } else if (intent === 'ProviderNetwork') {
-      reasoningSteps = dummyReasoningSteps.provider;
-      
-      // Use search results if available
-      if (searchResults.length > 0) {
-        resultContent = (
-          <div className="space-y-8">
-            <p className="text-gray-700">
-              Found {searchResults.length} provider-related resources:
-            </p>
-            <div className="space-y-3">
-              {searchResults.map((result: any, idx: number) => (
-                <div key={idx} className="bg-white border border-gray-200 rounded-lg p-4">
-                  <a href={result.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">
-                    {result.title}
-                  </a>
-                  <p className="text-sm text-gray-600 mt-1">{result.description}</p>
-                  {result.snippets && result.snippets.length > 0 && (
-                    <p className="text-xs text-gray-500 mt-2 italic">{result.snippets[0]}</p>
-                  )}
-                </div>
-              ))}
-            </div>
-            <InlineReasoning steps={reasoningSteps} />
-          </div>
-        );
-      } else {
-        // Fallback to dummy provider card
-        const provider = dummyProviders[0];
-        resultContent = (
-          <div className="space-y-8">
-            <p className="text-gray-700">
-              Found provider information:
-            </p>
-            <ProviderCard
-              name={provider.name}
-              specialty={provider.specialty}
-              location={provider.location}
-              acceptingNewPatients={provider.acceptingNewPatients}
-              coveredPlans={provider.coveredPlans}
-              onClick={() => {
-                setViewerContent(dummyFullContent.providers[0]);
-                setContentViewerOpen(true);
-              }}
-            />
-            <InlineReasoning steps={reasoningSteps} />
-            <QuickActionChips 
-              actions={['See full provider directory', 'Compare plan coverage', 'Book appointment']}
-              onActionClick={(action) => console.log('Action:', action)}
-            />
-          </div>
-        );
-      }
-    } else if (intent === 'Comparison') {
-      reasoningSteps = dummyReasoningSteps.comparison;
-      
-      // Use search results if available, otherwise fall back to dummy
-      if (searchResults.length > 0) {
-        resultContent = (
-          <div className="space-y-8">
-            <p className="text-gray-700">
-              Based on your search, here are relevant comparison resources:
-            </p>
-            <div className="space-y-3">
-              {searchResults.slice(0, 5).map((result: any, idx: number) => (
-                <div key={idx} className="bg-white border border-gray-200 rounded-lg p-4">
-                  <a href={result.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">
-                    {result.title}
-                  </a>
-                  <p className="text-sm text-gray-600 mt-1">{result.description}</p>
-                </div>
-              ))}
-            </div>
-            <InlineReasoning steps={reasoningSteps} />
-          </div>
-        );
-      } else {
-        // Fallback to dummy data
-        const plansArray = dummyPlans.slice(0, 2);
-        resultContent = (
-          <div className="space-y-8">
-            <p className="text-gray-700">
-              Here's a detailed comparison of the plans:
-            </p>
-            <PlanComparisonTable 
-              plans={plansArray}
-              recommendedPlanId={plansArray[0]?.id}
-            />
-            <InlineReasoning steps={reasoningSteps} />
-            <QuickActionChips 
-              actions={['Export comparison', 'Add another plan', 'See provider networks']}
-              onActionClick={(action) => console.log('Action:', action)}
-            />
-          </div>
-        );
-      }
     } else {
-      // Default: PlanInfo - show search results if available, otherwise dummy data
-      reasoningSteps = dummyReasoningSteps.planInfo;
-      const plansArray = dummyPlans.slice(0, 3);
+      // General intent - use combined dataset + API search with AI summarization
+      const resultsMessageId = messageId + '-results';
+      
       resultContent = (
         <div className="space-y-8">
-          {searchResults.length > 0 ? (
-            <div>
-              <p className="text-gray-700 mb-4">
-                Found {searchResults.length} insurance-related resources based on your criteria:
-              </p>
-
-              {/* Horizontally scrollable cards container */}
-              <div className="relative">
-                <div className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory scroll-smooth"
-                     style={{ scrollBehavior: 'smooth' }}>
-                  {searchResults.map((result: any, idx: number) => (
-                    <div
-                      key={idx}
-                      className="flex-shrink-0 w-96 bg-white border border-gray-200 rounded-xl p-5 hover:shadow-lg hover:border-gray-300 transition-all snap-start"
-                    >
-                      {/* Header */}
-                      <h4 className="font-semibold text-blue-600 mb-3 line-clamp-2 hover:text-blue-700">
-                        <a href={result.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
-                          {result.title}
-                        </a>
-                      </h4>
-
-                      {/* Description */}
-                      <p className="text-sm text-gray-600 mb-4 line-clamp-3">{result.description}</p>
-
-                      {/* Snippets */}
-                      {result.snippets && result.snippets.length > 0 && (
-                        <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-600 space-y-2 mb-4">
-                          {result.snippets.slice(0, 2).map((snippet: string, i: number) => (
-                            <p key={i} className="line-clamp-2">{snippet}</p>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Footer Link */}
-                      <div className="pt-3 border-t border-gray-100">
-                        <a
-                          href={result.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-[#2563EB] hover:text-[#1d4ed8] font-medium inline-flex items-center gap-1"
-                        >
-                          View full article →
-                        </a>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div>
-              <p className="text-gray-700 mb-4">
-                Here are some recommended plans based on your criteria:
-              </p>
-              <div className="flex gap-4 overflow-x-auto pb-4">
-                {plansArray.map((plan: any) => (
-                  <CompactPlanCard key={plan.id} plan={plan} />
-                ))}
-              </div>
-            </div>
-          )}
-          <InlineReasoning steps={reasoningSteps} />
-          <QuickActionChips 
-            actions={['Compare to other plans', 'See full SBC PDF', 'Find providers nearby']}
-            onActionClick={(action) => console.log('Action:', action)}
-          />
+          <p className="text-gray-700">
+            Searching datasets and web sources for comprehensive information...
+          </p>
+          <div className="flex items-center justify-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          </div>
         </div>
       );
+      
+      // Call the new /search-general endpoint asynchronously
+      setTimeout(() => {
+        fetch(`${API_BASE_URL}/search-general`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: originalQuery || 'health insurance',
+            entities: collectedEntities
+          })
+        })
+          .then(response => response.json())
+          .then(data => {
+            console.log('General search response:', data);
+            if (data.status === 'success' || data.status === 'partial') {
+              // Analyze the data to determine best UI presentation
+              const hasMultiplePlans = data.raw_results?.dataset_results?.filter((r: any) => r.type === 'plan').length > 1;
+              const isComparison = originalQuery.toLowerCase().includes('compare') || hasMultiplePlans;
+              
+              // Update the message with clean, professional UI
+              const synthesizedContent = (
+                <div className="space-y-6">
+                  {/* Main Answer Card - Clean white card like FAQ */}
+                  <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                    <div className="p-6">
+                      <div className="text-base text-gray-800 leading-relaxed space-y-4">
+                        {data.summary.split('\n\n').map((para: string, idx: number) => (
+                          <p key={idx}>{para}</p>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* View Details CTA */}
+                    <button
+                      onClick={() => {
+                        setViewerContent({
+                          type: 'sources',
+                          title: 'Detailed Information & Sources',
+                          sources: data.sources,
+                          raw_results: data.raw_results,
+                          summary: data.summary,
+                          key_findings: data.key_findings,
+                          recommendations: data.recommendations
+                        });
+                        setContentViewerOpen(true);
+                      }}
+                      className="w-full px-6 py-3 bg-gray-50 hover:bg-gray-100 border-t border-gray-200 transition-colors group flex items-center justify-between"
+                    >
+                      <span className="text-sm text-gray-700 font-medium">
+                        View detailed breakdown, pricing, and all sources
+                      </span>
+                      <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-blue-600 transition-colors" />
+                    </button>
+                  </div>
+
+                  {/* Comparison Table - if multiple plans detected */}
+                  {isComparison && data.raw_results?.dataset_results && (
+                    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                      <div className="px-6 py-4 border-b border-gray-200">
+                        <h3 className="text-base font-semibold text-gray-900">Quick Comparison</h3>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead className="bg-gray-50 border-b border-gray-100">
+                            <tr>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Plan Name</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Type</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Monthly Premium</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Deductible</th>
+                              <th className="px-6 py-3 text-center text-xs font-medium text-gray-600 uppercase tracking-wider"></th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-100">
+                            {data.raw_results.dataset_results.filter((r: any) => r.type === 'plan').slice(0, 5).map((result: any, idx: number) => (
+                              <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                                <td className="px-6 py-4">
+                                  <div className="font-medium text-gray-900 text-sm">{result.data.plan_marketing_name || result.data.plan_name}</div>
+                                  <div className="text-xs text-gray-500 mt-0.5">{result.data.issuer_name || result.data.insurer}</div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <span className="text-xs text-gray-600">
+                                    {result.data.metal_level || result.data.metal_tier} {result.data.plan_type}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <span className="text-sm font-medium text-gray-900">
+                                    ${result.data.monthly_premium_adult_40 || result.data.premium_avg_40yr || 'N/A'}
+                                  </span>
+                                  <span className="text-xs text-gray-500 ml-1">/month</span>
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-700">
+                                  ${result.data.deductible_individual_in_network || result.data.deductible_individual || 'N/A'}
+                                </td>
+                                <td className="px-6 py-4 text-center">
+                                  <button
+                                    onClick={() => {
+                                      setViewerContent({
+                                        type: 'plan',
+                                        title: result.data.plan_marketing_name || result.data.plan_name,
+                                        data: result.data,
+                                        sources: data.sources
+                                      });
+                                      setContentViewerOpen(true);
+                                    }}
+                                    className="text-blue-600 hover:text-blue-800 font-medium text-xs"
+                                  >
+                                    View Details
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+
+              // Replace the loading message with actual results
+              setMessages(prev => prev.map(msg => 
+                msg.id === resultsMessageId ? { ...msg, content: synthesizedContent } : msg
+              ));
+            }
+          })
+          .catch(error => {
+            console.error('Error fetching general search results:', error);
+            // Show error message
+            const errorContent = (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+                <p className="text-red-800">Sorry, I encountered an error while searching. Please try again.</p>
+              </div>
+            );
+            setMessages(prev => prev.map(msg => 
+              msg.id === resultsMessageId ? { ...msg, content: errorContent } : msg
+            ));
+          });
+      }, 100);
+      
+      reasoningSteps = [
+        { id: '1', label: 'Intent Detection', description: 'Identified as General query' },
+        { id: '2', label: 'Dataset Search', description: 'Searching local insurance datasets' },
+        { id: '3', label: 'Web Search', description: 'Querying You.com API for additional information' },
+        { id: '4', label: 'AI Synthesis', description: 'Combining and summarizing results with Gemini' }
+      ];
     }
 
     setMessages(prev => [...prev, {
