@@ -49,10 +49,10 @@ export const FAQCard: React.FC<FAQCardProps> = ({ topic, searchResults, onViewer
 
   if (loading) {
     return (
-      <div className="bg-white border border-gray-200 rounded-lg p-6">
+      <div className="bg-white border border-gray-200 rounded-lg p-4 sm:p-6">
         <div className="flex items-center gap-3 text-gray-500">
-          <Loader2 className="w-5 h-5 animate-spin" />
-          <span>Analyzing sources and preparing answer...</span>
+          <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
+          <span className="text-sm sm:text-base">Analyzing sources and preparing answer...</span>
         </div>
       </div>
     );
@@ -61,11 +61,11 @@ export const FAQCard: React.FC<FAQCardProps> = ({ topic, searchResults, onViewer
   return (
     <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
       {/* Main Answer - Self-sufficient */}
-      <div className="p-6">
-        <h3 className="text-xl font-bold text-gray-900 mb-3">
+      <div className="p-4 sm:p-6">
+        <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-2 sm:mb-3">
           {topic}
         </h3>
-        <div className="text-base text-gray-800 leading-relaxed prose prose-base max-w-none">
+        <div className="text-sm sm:text-base text-gray-800 leading-relaxed prose prose-sm sm:prose-base max-w-none">
           <ReactMarkdown>{briefAnswer}</ReactMarkdown>
         </div>
       </div>
@@ -73,9 +73,9 @@ export const FAQCard: React.FC<FAQCardProps> = ({ topic, searchResults, onViewer
       {/* Learn More CTA */}
       <button
         onClick={() => onViewerOpen(briefAnswer)}
-        className="w-full px-6 py-3 bg-gray-50 hover:bg-gray-100 border-t border-gray-200 transition-colors group flex items-center justify-between"
+        className="w-full px-4 sm:px-6 py-3 bg-gray-50 hover:bg-gray-100 border-t border-gray-200 transition-colors group flex items-center justify-between"
       >
-        <span className="text-sm text-gray-700 font-medium">
+        <span className="text-xs sm:text-sm text-gray-700 font-medium">
           See detailed explanation with examples and sources
         </span>
         <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-blue-600 transition-colors" />

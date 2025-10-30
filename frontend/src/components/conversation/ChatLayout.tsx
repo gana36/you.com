@@ -26,7 +26,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       {/* Chat Area */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto px-6 py-8 bg-background"
+        className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-8 bg-background"
       >
         <div className="max-w-5xl mx-auto space-y-1">
           {children}
