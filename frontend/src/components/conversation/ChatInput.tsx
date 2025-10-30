@@ -8,11 +8,11 @@ interface ChatInputProps {
 }
 
 const quickDemoChips = [
-  "What's the deductible for Molina Silver 1 HMO?",
-  "Is Dr. Patel covered by Cigna in Orlando?",
-  "Compare Florida Blue Silver and Molina Silver 1",
   "Explain coinsurance",
-  "Show me Florida health insurance news"
+  "Show me Florida health insurance news",
+  "Tell me about Florida Blue Silver plans",
+  "Find doctors in Miami that take Florida Blue",
+  "Compare Florida Blue and Molina plans"
 ];
 
 export const ChatInput: React.FC<ChatInputProps> = ({

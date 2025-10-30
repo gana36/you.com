@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import requests
 from config.intent_manager import get_config_manager
+from pathlib import Path
 
 # Load environment variables from .env file
 load_dotenv()
@@ -254,6 +255,202 @@ def search_with_you_api(query: str, entities: Dict[str, Any], intent: str = "Pla
         raise HTTPException(status_code=500, detail=f"You.com API error: {str(e)}")
 
 
+def load_datasets() -> Dict[str, List[Dict[str, Any]]]:
+    """Load all datasets from the datasets directory."""
+    datasets_dir = Path(__file__).parent / "datasets"
+    datasets = {}
+    
+    try:
+        # Load CMS API data
+        cms_path = datasets_dir / "cms_api.json"
+        if cms_path.exists():
+            with open(cms_path, 'r') as f:
+                datasets['cms'] = json.load(f)
+        
+        # Load policy data
+        policy_path = datasets_dir / "policy_data.json"
+        if policy_path.exists():
+            with open(policy_path, 'r') as f:
+                datasets['policy'] = json.load(f)
+        
+        # Load provider data
+        provider_path = datasets_dir / "provider_data.json"
+        if provider_path.exists():
+            with open(provider_path, 'r') as f:
+                datasets['provider'] = json.load(f)
+    except Exception as e:
+        print(f"Error loading datasets: {str(e)}")
+    
+    return datasets
+
+
+def search_datasets(query: str, entities: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Search through local datasets for relevant information with fuzzy matching."""
+    datasets = load_datasets()
+    results = []
+    
+    # Extract search criteria from entities and query
+    query_lower = query.lower()
+    plan_name = entities.get('plan_name', '').lower() if entities.get('plan_name') else None
+    insurer = entities.get('insurer', '').lower() if entities.get('insurer') else None
+    provider_name = entities.get('provider_name', '').lower() if entities.get('provider_name') else None
+    specialty = entities.get('specialty', '').lower() if entities.get('specialty') else None
+    coverage_item = entities.get('coverage_item', '').lower() if entities.get('coverage_item') else None
+    state = entities.get('state', '').lower() if entities.get('state') else None
+    county = entities.get('county', '').lower() if entities.get('county') else None
+    
+    # Detect keywords from query for better matching
+    keywords = {
+        'florida': 'FL',
+        'blue': 'blue',
+        'molina': 'molina',
+        'united': 'united',
+        'aetna': 'aetna',
+        'silver': 'silver',
+        'gold': 'gold',
+        'bronze': 'bronze',
+        'platinum': 'platinum',
+        'hmo': 'hmo',
+        'ppo': 'ppo',
+        'dental': 'dental',
+        'vision': 'vision',
+        'prescription': 'prescription',
+        'mental health': 'mental health',
+        'maternity': 'maternity'
+    }
+    
+    detected_keywords = {k: v for k, v in keywords.items() if k in query_lower}
+    
+    # Search CMS data - prioritize this as it has detailed pricing
+    for item in datasets.get('cms', []):
+        score = 0
+        match_reasons = []
+        
+        # Exact entity matches
+        if plan_name and plan_name in item.get('plan_marketing_name', '').lower():
+            score += 10
+            match_reasons.append(f"Plan name match")
+        if insurer and insurer in item.get('issuer_name', '').lower():
+            score += 8
+            match_reasons.append(f"Insurer match")
+        if state and state.lower() == item.get('state', '').lower():
+            score += 5
+            match_reasons.append(f"State match")
+            
+        # Keyword matches from query
+        for keyword, value in detected_keywords.items():
+            if value.lower() in item.get('plan_marketing_name', '').lower():
+                score += 3
+            if value.lower() in item.get('issuer_name', '').lower():
+                score += 3
+            if value.lower() == item.get('metal_level', '').lower():
+                score += 4
+            if value.lower() == item.get('plan_type', '').lower():
+                score += 4
+        
+        # If no specific criteria, match Florida plans (default)
+        if not plan_name and not insurer and item.get('state') == 'FL':
+            score += 2
+        
+        if score > 0:
+            results.append({
+                'source': 'CMS Marketplace Data',
+                'type': 'plan',
+                'title': item.get('plan_marketing_name', 'Unknown Plan'),
+                'description': f"{item.get('issuer_name')} - {item.get('metal_level')} {item.get('plan_type')} plan for {item.get('year')}",
+                'data': item,
+                'score': score,
+                'match_reasons': match_reasons,
+                'url': item.get('official_source') or item.get('data_source_url')
+            })
+    
+    # Search policy data - has detailed coverage info
+    for item in datasets.get('policy', []):
+        score = 0
+        match_reasons = []
+        
+        if plan_name and plan_name in item.get('plan_name', '').lower():
+            score += 10
+            match_reasons.append(f"Plan name match")
+        if insurer and insurer in item.get('insurer', '').lower():
+            score += 8
+            match_reasons.append(f"Insurer match")
+        if coverage_item:
+            coverage_list = ' '.join(item.get('coverage', [])).lower()
+            if coverage_item in coverage_list:
+                score += 7
+                match_reasons.append(f"Coverage match: {coverage_item}")
+        if state and state.lower() == item.get('state', '').lower():
+            score += 5
+            match_reasons.append(f"State match")
+            
+        # Keyword matches
+        for keyword, value in detected_keywords.items():
+            if value.lower() in item.get('plan_name', '').lower():
+                score += 3
+            if value.lower() in item.get('insurer', '').lower():
+                score += 3
+            coverage_list = ' '.join(item.get('coverage', [])).lower()
+            if value.lower() in coverage_list:
+                score += 4
+                
+        # Default Florida plans
+        if not plan_name and not insurer and item.get('state') == 'FL':
+            score += 2
+        
+        if score > 0:
+            results.append({
+                'source': 'Policy Document',
+                'type': 'coverage',
+                'title': item.get('plan_name', 'Unknown Plan'),
+                'description': item.get('text_chunk', ''),
+                'data': item,
+                'score': score,
+                'match_reasons': match_reasons,
+                'url': item.get('sbc_url')
+            })
+    
+    # Search provider data
+    for item in datasets.get('provider', []):
+        score = 0
+        match_reasons = []
+        
+        if provider_name and provider_name in item.get('provider_name', '').lower():
+            score += 10
+            match_reasons.append(f"Provider name match")
+        if specialty and specialty in item.get('specialty', '').lower():
+            score += 8
+            match_reasons.append(f"Specialty match")
+        if insurer:
+            networks = item.get('plan_networks', [])
+            for net in networks:
+                if insurer in net.get('issuer_name', '').lower():
+                    score += 6
+                    match_reasons.append(f"In-network for {insurer}")
+                    break
+        
+        # Keyword matches
+        for keyword, value in detected_keywords.items():
+            if value.lower() in item.get('specialty', '').lower():
+                score += 3
+        
+        if score > 0:
+            results.append({
+                'source': 'Provider Network',
+                'type': 'provider',
+                'title': f"{item.get('provider_name')} - {item.get('specialty')}",
+                'description': f"{item.get('provider_type')} accepting new patients: {item.get('accepting_new_patients')}",
+                'data': item,
+                'score': score,
+                'match_reasons': match_reasons
+            })
+    
+    # Sort by score (highest first)
+    results.sort(key=lambda x: x.get('score', 0), reverse=True)
+    
+    return results
+
+
 def determine_next_question(
     collected_entities: Dict[str, Any], 
     intent: str,
@@ -296,7 +493,7 @@ def determine_next_question(
     }
     
     # Get question from config manager (with optional LLM generation)
-    llm_model = genai.GenerativeModel('gemini-2.0-flash-exp') if use_dynamic_questions else None
+    llm_model = genai.GenerativeModel('gemini-2.0-flash') if use_dynamic_questions else None
     
     return config_manager.get_entity_question(
         entity=next_entity,
@@ -374,7 +571,7 @@ async def detect_intent_entities(request: QueryRequest):
     
     try:
         # Initialize Gemini model (2.0 Flash)
-        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        model = genai.GenerativeModel('gemini-2.0-flash')
         
         # Create prompt
         prompt = create_prompt(request.query)
@@ -529,7 +726,7 @@ async def get_brief_faq_answer(request: dict):
         combined_context = "\n".join(filter(None, context_parts))
         
         # Use Gemini to extract clean brief answer
-        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        model = genai.GenerativeModel('gemini-2.0-flash')
         
         prompt = f"""Based on these search results about "{topic}", write a clean, brief definition (2-3 sentences maximum).
 
@@ -616,7 +813,7 @@ async def synthesize_faq_answer(request: dict):
         combined_context = "\n".join(context_parts)
         
         # Use Gemini to create comprehensive FAQ answer
-        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        model = genai.GenerativeModel('gemini-2.0-flash')
         
         prompt = f"""You are a health insurance expert. Based on the search results below, create a comprehensive, easy-to-understand answer about "{topic}".
 
@@ -722,7 +919,7 @@ Key Excerpts:
 """
         
         # Use Gemini to create enhanced content
-        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        model = genai.GenerativeModel('gemini-2.0-flash')
         
         prompt = f"""Based on the following article information, create a comprehensive, well-structured summary.
 
@@ -781,6 +978,274 @@ Make it informative, well-written, and easy to understand. Focus on the most imp
         raise HTTPException(status_code=500, detail=f"Error enhancing article: {str(e)}")
 
 
+@app.post("/search-general")
+async def search_general(request: dict):
+    """
+    Search and summarize results for General intent queries.
+    Combines dataset search with You.com API search and uses Gemini to synthesize.
+    
+    Args:
+        request: Dictionary with query and entities
+        
+    Returns:
+        Combined and summarized results with sources
+    """
+    query = request.get("query", "")
+    entities = request.get("entities", {})
+    
+    if not query:
+        raise HTTPException(status_code=400, detail="Query is required")
+    
+    try:
+        # Search datasets
+        print(f"DEBUG: Searching datasets for: {query}")
+        dataset_results = search_datasets(query, entities)
+        print(f"DEBUG: Found {len(dataset_results)} dataset results")
+        
+        # Search You.com API
+        print(f"DEBUG: Searching You.com API for: {query}")
+        api_results = search_with_you_api(query, entities, intent="General")
+        print(f"DEBUG: Found {len(api_results)} API results")
+        
+        # Combine results
+        all_results = {
+            'dataset_results': dataset_results[:5],  # Top 5 from datasets
+            'api_results': api_results[:5]  # Top 5 from API
+        }
+        
+        # Prepare context for Gemini
+        context_parts = []
+        sources = []
+        
+        # Add dataset results to context with RICH details
+        context_parts.append("=== OFFICIAL DATASET RESULTS (CMS & Policy Documents) ===")
+        for idx, result in enumerate(dataset_results[:8]):  # Increased to 8 for more data
+            context_parts.append(f"\n--- Dataset Source {idx + 1}: {result['title']} ---")
+            context_parts.append(f"Type: {result['type']}")
+            context_parts.append(f"Source: {result['source']}")
+            context_parts.append(f"Match Score: {result.get('score', 0)}")
+            
+            # Add detailed data based on type
+            data = result.get('data', {})
+            if result['type'] == 'plan':
+                # CMS data - show ALL pricing tiers and details
+                context_parts.append(f"\n📋 PLAN DETAILS:")
+                context_parts.append(f"  - Insurer: {data.get('issuer_name', 'N/A')}")
+                context_parts.append(f"  - Plan Type: {data.get('plan_type', 'N/A')}")
+                context_parts.append(f"  - Metal Level: {data.get('metal_level', 'N/A')}")
+                context_parts.append(f"  - Year: {data.get('year', 'N/A')}")
+                context_parts.append(f"  - State: {data.get('state', 'N/A')}")
+                context_parts.append(f"\n💰 MONTHLY PREMIUMS BY AGE:")
+                context_parts.append(f"  - Age 21: ${data.get('monthly_premium_adult_21', 'N/A')}")
+                context_parts.append(f"  - Age 27: ${data.get('monthly_premium_adult_27', 'N/A')}")
+                context_parts.append(f"  - Age 30: ${data.get('monthly_premium_adult_30', 'N/A')}")
+                context_parts.append(f"  - Age 40: ${data.get('monthly_premium_adult_40', 'N/A')}")
+                context_parts.append(f"  - Age 50: ${data.get('monthly_premium_adult_50', 'N/A')}")
+                context_parts.append(f"  - Age 60: ${data.get('monthly_premium_adult_60', 'N/A')}")
+                context_parts.append(f"\n🏥 COST SHARING:")
+                context_parts.append(f"  - Individual Deductible: ${data.get('deductible_individual_in_network', 'N/A')}")
+                context_parts.append(f"  - Family Deductible: ${data.get('deductible_family_in_network', 'N/A')}")
+                context_parts.append(f"  - Individual Out-of-Pocket Max: ${data.get('out_of_pocket_max_individual_in_network', 'N/A')}")
+                context_parts.append(f"  - Family Out-of-Pocket Max: ${data.get('out_of_pocket_max_family_in_network', 'N/A')}")
+                context_parts.append(f"  - PCP Visit Copay: ${data.get('pcp_office_visit_copay', 'N/A')}")
+                context_parts.append(f"  - Specialist Visit Copay: ${data.get('specialist_office_visit_copay', 'N/A')}")
+                context_parts.append(f"\n📄 Official Source: {data.get('official_source', data.get('data_source_url', 'N/A'))}")
+                
+            elif result['type'] == 'coverage':
+                # Policy data - show detailed coverage and copays
+                context_parts.append(f"\n📋 COVERAGE DETAILS:")
+                context_parts.append(f"  - Insurer: {data.get('insurer', 'N/A')}")
+                context_parts.append(f"  - Plan Type: {data.get('plan_type', 'N/A')}")
+                context_parts.append(f"  - Metal Tier: {data.get('metal_tier', 'N/A')}")
+                context_parts.append(f"  - Coverage Year: {data.get('coverage_year', 'N/A')}")
+                
+                coverage_list = data.get('coverage', [])
+                if coverage_list:
+                    context_parts.append(f"\n✅ COVERED SERVICES ({len(coverage_list)} services):")
+                    context_parts.append(f"  {', '.join(coverage_list)}")
+                
+                context_parts.append(f"\n💰 COSTS:")
+                context_parts.append(f"  - Individual Deductible: ${data.get('deductible_individual', 'N/A')}")
+                context_parts.append(f"  - Family Deductible: ${data.get('deductible_family', 'N/A')}")
+                context_parts.append(f"  - Out-of-Pocket Max (Individual): ${data.get('out_of_pocket_max_individual', 'N/A')}")
+                context_parts.append(f"  - Out-of-Pocket Max (Family): ${data.get('out_of_pocket_max_family', 'N/A')}")
+                context_parts.append(f"  - Average Premium (age 40): ${data.get('premium_avg_40yr', 'N/A')}")
+                
+                context_parts.append(f"\n🏥 COPAYS:")
+                context_parts.append(f"  - Primary Care: ${data.get('copay_pcp', 'N/A')}")
+                context_parts.append(f"  - Specialist: ${data.get('copay_specialist', 'N/A')}")
+                context_parts.append(f"  - Emergency Room: ${data.get('copay_er', 'N/A')}")
+                context_parts.append(f"  - Urgent Care: ${data.get('copay_urgent_care', 'N/A')}")
+                context_parts.append(f"  - Generic Rx: ${data.get('copay_generic_rx', 'N/A')}")
+                context_parts.append(f"  - Preferred Brand Rx: ${data.get('copay_preferred_brand_rx', 'N/A')}")
+                context_parts.append(f"  - Coinsurance Rate: {data.get('coinsurance_rate', 'N/A')}")
+                
+                context_parts.append(f"\n📝 PLAN SUMMARY:")
+                context_parts.append(f"  {data.get('text_chunk', 'N/A')}")
+                context_parts.append(f"\n📄 Official SBC: {data.get('sbc_url', 'N/A')}")
+                
+            elif result['type'] == 'provider':
+                location = data.get('location', {})
+                context_parts.append(f"\n👨‍⚕️ PROVIDER INFO:")
+                context_parts.append(f"  - Specialty: {data.get('specialty', 'N/A')}")
+                context_parts.append(f"  - Location: {location.get('city', 'N/A')}, {location.get('state', 'N/A')}")
+                context_parts.append(f"  - Address: {location.get('address_line1', 'N/A')}")
+                context_parts.append(f"  - Accepting New Patients: {data.get('accepting_new_patients', 'N/A')}")
+                context_parts.append(f"  - Telehealth Available: {data.get('telehealth_available', 'N/A')}")
+                
+                networks = data.get('plan_networks', [])
+                if networks:
+                    context_parts.append(f"\n🏥 IN-NETWORK FOR {len(networks)} PLANS:")
+                    for net in networks[:3]:
+                        context_parts.append(f"  - {net.get('plan_name', 'N/A')} ({net.get('issuer_name', 'N/A')})")
+            
+            sources.append({
+                'title': result['title'],
+                'source': result['source'],
+                'type': 'dataset',
+                'url': result.get('url')  # Include URL from dataset if available
+            })
+        
+        # Add API results to context
+        context_parts.append("\n\n=== WEB SEARCH RESULTS ===")
+        for idx, result in enumerate(api_results[:5]):
+            context_parts.append(f"\nWeb Source {idx + 1}: {result['title']}")
+            context_parts.append(f"Description: {result['description']}")
+            if result.get('snippets'):
+                context_parts.append("Key excerpts:")
+                for snippet in result['snippets'][:2]:
+                    context_parts.append(f"  - {snippet}")
+            
+            sources.append({
+                'title': result['title'],
+                'url': result.get('url', ''),
+                'source': 'Web',
+                'type': 'api'
+            })
+        
+        combined_context = "\n".join(context_parts)
+        
+        # Use Gemini to synthesize comprehensive answer
+        model = genai.GenerativeModel('gemini-2.0-flash')
+        
+        prompt = f"""You are a health insurance expert. Based on the official CMS data, policy documents, and web sources below, create a comprehensive answer to: "{query}"
+
+Search Results:
+{combined_context}
+
+IMPORTANT INSTRUCTIONS:
+1. PRIORITIZE the official dataset results (CMS & Policy Documents) - they contain verified pricing, coverage, and plan details
+2. Use SPECIFIC NUMBERS from the data: premiums by age, deductibles, copays, out-of-pocket maximums
+3. Mention plan names, insurers, and metal levels when discussing specific plans
+4. Include coverage details (what services are covered) when relevant
+5. Combine dataset facts with web context for a complete answer
+6. FORMAT THE SUMMARY IN MARKDOWN - ADAPT THE FORMAT BASED ON THE QUESTION:
+   - For plan information: Use headings (##) and bullet points with **bold** labels
+   - For comparisons: Use bullet points comparing side-by-side
+   - For coverage questions: Use bullet points listing what's covered
+   - For pricing questions: Use bullet points with cost breakdowns
+   - ALWAYS use bullet points extensively for readability
+   - Use **bold** for plan names, dollar amounts, and key terms
+   - Keep paragraphs short (1-2 sentences max)
+
+Format your response as JSON:
+{{
+  "summary": "Comprehensive answer in MARKDOWN format with EXTENSIVE BULLET POINTS. Start with a brief intro (1 sentence), then use bullet points for all details. Use **bold** for emphasis on plan names, prices, and key terms.",
+  "key_findings": [
+    "Finding with specific numbers/details from datasets",
+    "Another finding with concrete data",
+    "3-5 total findings with real numbers"
+  ],
+  "recommendations": "Actionable next steps in MARKDOWN BULLET POINTS format. Use numbered list (1. 2. 3.) or bullet points (- ) with **bold** for emphasis."
+}}
+
+Example formats based on question type:
+
+For "Tell me about Florida Blue Silver plans":
+"The **Florida Blue myBlue Silver HMO 2025** is a popular marketplace plan with competitive pricing and comprehensive coverage.
+
+**Key Features:**
+- **Monthly Premium** (age 40): $450
+- **Individual Deductible**: $100
+- **Out-of-Pocket Max**: $1,800
+- **Primary Care Copay**: $5
+- **Specialist Copay**: $12
+- **Network Type**: HMO (smaller network, lower costs)
+
+**What's Covered:**
+- Preventive care at no cost
+- Emergency services
+- Prescription drugs
+- Mental health services"
+
+For comparison questions:
+"Here's how the **Florida Blue myBlue Silver HMO** compares to the **UnitedHealthcare Silver Compass EPO**:
+
+**Florida Blue myBlue Silver HMO:**
+- **Deductible**: $100 (much lower)
+- **Out-of-Pocket Max**: $1,800
+- **PCP Copay**: $5
+- **Network**: Smaller (HMO)
+
+**UnitedHealthcare Silver Compass EPO:**
+- **Deductible**: $3,500 (higher)
+- **Out-of-Pocket Max**: $9,100
+- **PCP Copay**: $35
+- **Network**: Larger (EPO)"
+
+Example of good recommendations format:
+"**Next Steps:**
+
+1. **Compare plans** on HealthCare.gov to find the best fit for your needs and budget
+2. **Consider your healthcare usage** when choosing between lower premiums/higher deductibles vs higher premiums/lower deductibles
+3. **Check provider networks** to ensure your preferred doctors are in-network
+4. **Review coverage details** for services you use most frequently
+5. **Enroll during open enrollment** (November 1 - January 15)"
+
+Make it scannable, data-rich, and use bullet points extensively!
+"""
+        
+        print(f"DEBUG: Synthesizing answer with Gemini")
+        response = model.generate_content(prompt)
+        response_text = response.text.strip()
+        
+        # Parse JSON response
+        if response_text.startswith("```"):
+            response_text = response_text.split("```")[1]
+            if response_text.startswith("json"):
+                response_text = response_text[4:]
+        
+        synthesized_data = json.loads(response_text.strip())
+        
+        print(f"DEBUG: Successfully synthesized answer")
+        
+        return {
+            "status": "success",
+            "query": query,
+            "summary": synthesized_data.get("summary", ""),
+            "key_findings": synthesized_data.get("key_findings", []),
+            "recommendations": synthesized_data.get("recommendations", ""),
+            "sources": sources,
+            "raw_results": all_results
+        }
+        
+    except json.JSONDecodeError as e:
+        print(f"DEBUG: JSON parse error: {str(e)}")
+        # Fallback: return raw results
+        return {
+            "status": "partial",
+            "query": query,
+            "summary": "Found relevant information from multiple sources.",
+            "key_findings": [],
+            "recommendations": "",
+            "sources": sources,
+            "raw_results": all_results
+        }
+    except Exception as e:
+        print(f"DEBUG: Error in search-general: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error processing search: {str(e)}")
+
+
 @app.post("/chat", response_model=ConversationResponse)
 async def chat(request: ConversationRequest):
     """
@@ -834,7 +1299,7 @@ async def chat(request: ConversationRequest):
             pre_detected_intent = "FAQ"
 
         # Use Gemini to extract entities from the current query
-        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        model = genai.GenerativeModel('gemini-2.0-flash')
 
         # Create a context-aware prompt that includes conversation history
         context = ""
@@ -859,38 +1324,31 @@ async def chat(request: ConversationRequest):
         extraction_prompt = f"""Analyze this user query: "{request.query}"{context}{intent_hint}{asking_hint}
 
 First, determine the PRIMARY INTENT:
-- PlanInfo: User wants to find or learn about insurance plans for themselves or a specific plan
-- CoverageDetail: User asks what a specific plan covers (keywords: does it cover, coverage for, included, benefits)
-- ProviderNetwork: User asks about doctors or hospitals (keywords: doctor, hospital, provider, network, physician)
-- Comparison: User wants to compare multiple plans (keywords: compare, vs, versus, difference between)
 - FAQ: User has a general question or wants explanation (keywords: what is, explain, define, how does, tell me about)
 - News: User wants latest news, updates, or recent information (keywords: news, latest, update, recent, what's new)
+- General: User wants to find information about insurance plans, coverage, providers, or comparisons (anything else)
 
 Then extract relevant entities ONLY if they are EXPLICITLY mentioned:
 - plan_name: Specific insurance plan name (e.g., "Molina Silver 1 HMO", "Aetna Gold")
-- insurer: Insurance company name (e.g., "Molina", "Aetna", "UnitedHealthcare", "Blue Cross")
+- insurer: Insurance company name (e.g., "Molina", "Aetna", "UnitedHealthcare", "Blue Cross", "Florida Blue")
 - year: Year of coverage (e.g., "2024", "2025")
 - county: County name (NOT state names - only specific counties like "Miami-Dade", "Broward", "Leon")
 - age: User's age (number only, not generic references like "my age")
 - coverage_item: Specific coverage type (e.g., "dental", "vision", "prescription drugs", "mental health")
-- subtype: Subtype or specific aspect of coverage (e.g., "preventive care", "specialist visits")
-- provider_name: Name of doctor or hospital (e.g., "Dr. Smith", "Memorial Hospital")
-- specialty: Medical specialty (e.g., "cardiology", "pediatrics", "dermatology")
-- features: Plan features to compare (e.g., "premiums", "deductibles", "copays")
+- provider_name: Name of doctor or hospital (e.g., "Dr. Smith", "Memorial Hospital", "Dr. Garcia")
+- specialty: Medical specialty (e.g., "cardiology", "pediatrics", "dermatology", "family medicine")
 - topic: Topic or subject matter for FAQ or News. 
   * For FAQ: Extract ONLY the concept name, not question words. "what is coinsurance?" → "coinsurance", "explain deductible" → "deductible"
   * For News: Extract the news topic/focus. "Florida health insurance news" → "health insurance", "ACA subsidy updates" → "ACA subsidies", "Medicare changes" → "Medicare"
   * Examples: "coinsurance", "deductible", "copay", "HMO", "PPO", "open enrollment", "subsidies", "Medicare", "Medicaid"
 - state: State name (e.g., "Florida", "Texas", "California")
-- income: Annual income (number only, extract just the number without $ or commas)
 
 IMPORTANT FOR FAQ: Extract ONLY the topic name, NOT question words like "what is", "explain", "tell me about", etc!
-IMPORTANT: Do NOT extract entities if user is just asking about news or general information without specific details!
 
 Return JSON only:
 {{
   "entities": {{"entity_name": "value", ...}},
-  "intent": "one of: PlanInfo, CoverageDetail, ProviderNetwork, Comparison, FAQ, News"
+  "intent": "one of: General, FAQ, News"
 }}"""
 
         response = model.generate_content(
@@ -974,15 +1432,14 @@ Return JSON only:
         # Also handle entity mapping for different intents
         for key, value in new_entities.items():
             if key in VALID_ENTITIES and value:
+                # Special handling for News intent: always ask for topic, don't auto-extract
+                if intent == "News" and key == "topic":
+                    print(f"DEBUG: Skipping auto-extracted topic for News intent - will ask user")
+                    continue
                 print(f"DEBUG: Setting entity {key} = {value}")
                 session["collected_entities"][key] = value
         
         print(f"DEBUG: Collected entities AFTER merge: {session['collected_entities']}")
-
-        # Special mapping: for CoverageDetail, "features" should map to "coverage_item"
-        if session["intent"] == "CoverageDetail" and "features" in new_entities and "coverage_item" not in new_entities:
-            session["collected_entities"]["coverage_item"] = new_entities["features"]
-            print(f"DEBUG: Mapped features '{new_entities['features']}' to coverage_item for CoverageDetail intent")
 
         # Check if we have all required information based on SESSION intent (not newly detected)
         # This ensures we use the correct intent during entity collection
