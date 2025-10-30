@@ -56,6 +56,8 @@ image.png
 # Documentation (not needed in repo)
 *.md
 !README.md
+!LICENSE
+!DATASET_SEARCH_EXPLAINED.md
 
 # Example files
 **/example/
