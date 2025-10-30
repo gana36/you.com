@@ -468,7 +468,9 @@ export const ContentViewer: React.FC<ContentViewerProps> = ({ isOpen, onClose, c
                       <span className="flex-shrink-0 w-6 h-6 bg-white border border-gray-300 rounded-full flex items-center justify-center text-xs font-semibold text-gray-600 mt-0.5">
                         {idx + 1}
                       </span>
-                      <p className="text-sm text-gray-700 leading-relaxed flex-1">{finding}</p>
+                      <div className="text-sm text-gray-700 leading-relaxed flex-1 prose prose-sm max-w-none">
+                        <ReactMarkdown>{finding}</ReactMarkdown>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -480,7 +482,9 @@ export const ContentViewer: React.FC<ContentViewerProps> = ({ isOpen, onClose, c
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-200">Recommendations</h3>
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <p className="text-sm text-gray-800 leading-relaxed">{content.recommendations}</p>
+                  <div className="text-sm text-gray-800 leading-relaxed prose prose-sm max-w-none">
+                    <ReactMarkdown>{content.recommendations}</ReactMarkdown>
+                  </div>
                 </div>
               </div>
             )}

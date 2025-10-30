@@ -10,6 +10,7 @@ import { FAQCard } from './components/results/FAQCard';
 import { ContentViewer } from './components/conversation/ContentViewer';
 import { InlineReasoning } from './components/conversation/InlineReasoning';
 import { ChevronRight } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import { dummyPlans, dummyCounties, dummyNews, dummyReasoningSteps } from './data/dummyData';
 import { API_BASE_URL } from './config';
 import { configService } from './services/configService';
@@ -772,10 +773,8 @@ function App() {
                   {/* Main Answer Card - Clean white card like FAQ */}
                   <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
                     <div className="p-6">
-                      <div className="text-base text-gray-800 leading-relaxed space-y-4">
-                        {data.summary.split('\n\n').map((para: string, idx: number) => (
-                          <p key={idx}>{para}</p>
-                        ))}
+                      <div className="prose prose-base max-w-none text-gray-800 leading-relaxed">
+                        <ReactMarkdown>{data.summary}</ReactMarkdown>
                       </div>
                     </div>
 

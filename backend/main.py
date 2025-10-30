@@ -1139,10 +1139,18 @@ IMPORTANT INSTRUCTIONS:
 3. Mention plan names, insurers, and metal levels when discussing specific plans
 4. Include coverage details (what services are covered) when relevant
 5. Combine dataset facts with web context for a complete answer
+6. FORMAT THE SUMMARY IN MARKDOWN - ADAPT THE FORMAT BASED ON THE QUESTION:
+   - For plan information: Use headings (##) and bullet points with **bold** labels
+   - For comparisons: Use bullet points comparing side-by-side
+   - For coverage questions: Use bullet points listing what's covered
+   - For pricing questions: Use bullet points with cost breakdowns
+   - ALWAYS use bullet points extensively for readability
+   - Use **bold** for plan names, dollar amounts, and key terms
+   - Keep paragraphs short (1-2 sentences max)
 
 Format your response as JSON:
 {{
-  "summary": "2-3 paragraph comprehensive answer with SPECIFIC DATA (prices, plan names, coverage details, copays, etc.)",
+  "summary": "Comprehensive answer in MARKDOWN format with EXTENSIVE BULLET POINTS. Start with a brief intro (1 sentence), then use bullet points for all details. Use **bold** for emphasis on plan names, prices, and key terms.",
   "key_findings": [
     "Finding with specific numbers/details from datasets",
     "Another finding with concrete data",
@@ -1151,9 +1159,41 @@ Format your response as JSON:
   "recommendations": "Actionable next steps based on the data"
 }}
 
-Example of good summary: "The Florida Blue myBlue Silver HMO 2025 plan costs $450/month for a 40-year-old, with a low $100 individual deductible and $1,800 out-of-pocket maximum. Primary care visits are just $5 copay..."
+Example formats based on question type:
 
-Make it data-rich and specific!
+For "Tell me about Florida Blue Silver plans":
+"The **Florida Blue myBlue Silver HMO 2025** is a popular marketplace plan with competitive pricing and comprehensive coverage.
+
+**Key Features:**
+- **Monthly Premium** (age 40): $450
+- **Individual Deductible**: $100
+- **Out-of-Pocket Max**: $1,800
+- **Primary Care Copay**: $5
+- **Specialist Copay**: $12
+- **Network Type**: HMO (smaller network, lower costs)
+
+**What's Covered:**
+- Preventive care at no cost
+- Emergency services
+- Prescription drugs
+- Mental health services"
+
+For comparison questions:
+"Here's how the **Florida Blue myBlue Silver HMO** compares to the **UnitedHealthcare Silver Compass EPO**:
+
+**Florida Blue myBlue Silver HMO:**
+- **Deductible**: $100 (much lower)
+- **Out-of-Pocket Max**: $1,800
+- **PCP Copay**: $5
+- **Network**: Smaller (HMO)
+
+**UnitedHealthcare Silver Compass EPO:**
+- **Deductible**: $3,500 (higher)
+- **Out-of-Pocket Max**: $9,100
+- **PCP Copay**: $35
+- **Network**: Larger (EPO)"
+
+Make it scannable, data-rich, and use bullet points extensively!
 """
         
         print(f"DEBUG: Synthesizing answer with Gemini")
