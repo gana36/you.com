@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Scale, Search, Users, DollarSign, Calendar, Brain, Pill } from 'lucide-react';
+import { FileText, Scale, Search, Calendar, Brain, Pill } from 'lucide-react';
 
 interface IntentBadgeProps {
   intent: string;
