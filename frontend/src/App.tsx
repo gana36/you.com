@@ -38,6 +38,8 @@ function App() {
   const [evidenceDrawerOpen, setEvidenceDrawerOpen] = useState(false);
   const [evidenceSteps, setEvidenceSteps] = useState<any[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [currentIntent, setCurrentIntent] = useState<string | null>(null);
+  const [thinkingMessageId, setThinkingMessageId] = useState<string | null>(null);
 
   useEffect(() => {
     setMessages([{
@@ -82,14 +84,77 @@ function App() {
     };
     setMessages(prev => [...prev, userMessage]);
 
+    // Detect intent of the new message first
+    const newIntent = detectIntent(text);
+    console.log('🔍 New message intent:', newIntent);
+    console.log('🔍 Current session intent:', currentIntent);
+    console.log('🔍 Has active session:', !!sessionId);
+
+    // Check if this looks like a follow-up answer (short, simple text) vs a new query
+    const looksLikeAnswer = text.length < 50 && !text.includes('?') && 
+                           !text.toLowerCase().startsWith('tell me') &&
+                           !text.toLowerCase().startsWith('show me') &&
+                           !text.toLowerCase().startsWith('find') &&
+                           !text.toLowerCase().startsWith('explain') &&
+                           !text.toLowerCase().startsWith('what');
+
+    // If we have an active session AND it looks like a follow-up answer
+    // AND current intent is NOT News/FAQ, then continue the session
+    const isFollowUp = sessionId && thinkingMessageId && 
+                       currentIntent !== 'News' && currentIntent !== 'FAQ' &&
+                       looksLikeAnswer;
+    
+    console.log('🔍 Looks like answer:', looksLikeAnswer);
+    console.log('🔍 Is follow-up:', isFollowUp);
+    
+    if (isFollowUp) {
+      console.log('📨 Sending follow-up response to existing session:', sessionId);
+      setActiveMessageId('follow-up');
+      
+      try {
+        const response = await fetch(`${API_BASE_URL}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId, query: text })
+        });
+
+        const data = await response.json();
+        console.log('📨 Backend response to follow-up:', data);
+
+        if (data.requires_input && data.next_question) {
+          // Still collecting, show next question
+          setMessages(prev => [...prev, {
+            id: Date.now().toString(),
+            type: 'agent',
+            content: <div className="text-gray-700">{data.response}</div>
+          }]);
+          setActiveMessageId(null);
+        } else if (data.status === 'complete') {
+          // Done collecting, proceed to search
+          updateThinkingStep(thinkingMessageId, 'collection', 'complete');
+          setActiveMessageId(thinkingMessageId);
+          performSearch(thinkingMessageId, currentIntent || 'PlanInfo', sessionId);
+        }
+      } catch (error) {
+        console.error('Error sending follow-up:', error);
+        setActiveMessageId(null);
+      }
+      return;
+    }
+
     // Reset state for new query
     setCollectedEntities({});
     setCurrentEntityIndex(0);
     setMissingEntities([]);
+    setSessionId(null); // Reset session for new conversation
+    setCurrentIntent(null);
+    setThinkingMessageId(null);
 
     // Start agentic thinking
     const thinkingId = (Date.now() + 1).toString();
     const intent = detectIntent(text);
+    setCurrentIntent(intent);
+    setThinkingMessageId(thinkingId);
 
     const thinkingMessage: Message = {
       id: thinkingId,
@@ -128,32 +193,45 @@ function App() {
         // Check if backend requires any more information
         if (data.requires_input && data.next_question) {
           console.log('Backend requires input! Starting entity collection...');
-          // Backend is asking for more info - trust the backend's determination
-          // Don't try to filter entities on frontend, backend knows what's needed
           updateThinkingStep(thinkingId, 'collection', 'active');
 
-          // Show the question from backend
-          setMessages(prev => [...prev, {
-            id: thinkingId + '-question',
-            type: 'agent',
-            content: <div className="text-gray-700">{data.response}</div>
-          }]);
+          // For News and FAQ: Use inline entity collectors (popups)
+          if (intent === 'News' || intent === 'FAQ') {
+            console.log(`${intent} - Using inline entity collectors`);
+            
+            // Show the question from backend
+            setMessages(prev => [...prev, {
+              id: thinkingId + '-question',
+              type: 'agent',
+              content: <div className="text-gray-700">{data.response}</div>
+            }]);
 
-          // Fetch ONLY the required entities for THIS specific intent
-          configService.getRequiredEntities(intent).then(requiredForIntent => {
-            const missing = requiredForIntent.filter(e => !data.collected_entities[e]);
-            setMissingEntities(missing);
+            // Fetch required entities and show inline collectors
+            configService.getRequiredEntities(intent).then(requiredForIntent => {
+              const missing = requiredForIntent.filter(e => !data.collected_entities[e]);
+              setMissingEntities(missing);
 
-            // Start collecting the first missing entity
-            if (missing.length > 0) {
-              startEntityCollection(thinkingId, intent, missing, data.session_id);
-            }
-          }).catch(error => {
-            console.error('Error fetching entity configuration:', error);
-            // Fallback: trust backend's determination
-            // Backend already calculated what's missing, so we don't add more
-            console.log('Using backend-provided missing entities');
-          });
+              if (missing.length > 0) {
+                startEntityCollection(thinkingId, intent, missing, data.session_id);
+              }
+            }).catch(error => {
+              console.error('Error fetching entity configuration:', error);
+            });
+          }
+          // For other intents: Use main chat input
+          else {
+            console.log(`${intent} - Using main chat input for follow-ups`);
+            
+            // Show the question from backend
+            setMessages(prev => [...prev, {
+              id: thinkingId + '-question',
+              type: 'agent',
+              content: <div className="text-gray-700">{data.response}</div>
+            }]);
+
+            // Clear activeMessageId to enable main chat input
+            setActiveMessageId(null);
+          }
         } else if (data.status === 'complete' && data.search_results) {
           // Backend has completed AND returned search results - use them directly!
           console.log('✅ Backend returned search results:', data.search_results);
@@ -193,11 +271,31 @@ function App() {
 
   const detectIntent = (text: string): string => {
     const lower = text.toLowerCase();
-    if (lower.includes('compare')) return 'Comparison';
-    if (lower.includes('provider') || lower.includes('doctor') || lower.includes('dr.')) return 'ProviderNetwork';
-    if (lower.includes('news') || lower.includes('latest') || lower.includes('update')) return 'News';
-    if (lower.includes('explain') || lower.includes('what is') || lower.includes('define')) return 'FAQ';
-    if (lower.includes('cover')) return 'CoverageDetail';
+    console.log('🎯 Detecting intent for:', text);
+    console.log('🎯 Lowercase:', lower);
+    
+    if (lower.includes('compare')) {
+      console.log('🎯 Detected: Comparison');
+      return 'Comparison';
+    }
+    if (lower.includes('provider') || lower.includes('doctor') || lower.includes('dr.')) {
+      console.log('🎯 Detected: ProviderNetwork');
+      return 'ProviderNetwork';
+    }
+    if (lower.includes('news') || lower.includes('latest') || lower.includes('update')) {
+      console.log('🎯 Detected: News');
+      return 'News';
+    }
+    if (lower.includes('explain') || lower.includes('what is') || lower.includes('define')) {
+      console.log('🎯 Detected: FAQ');
+      return 'FAQ';
+    }
+    if (lower.includes('cover')) {
+      console.log('🎯 Detected: CoverageDetail');
+      return 'CoverageDetail';
+    }
+    
+    console.log('🎯 Detected: PlanInfo (default)');
     return 'PlanInfo';
   };
 
