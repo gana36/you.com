@@ -51,24 +51,26 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   };
 
   return (
-    <div className="border-t border-gray-200 bg-white px-6 py-5">
+    <div className="border-t border-gray-200 bg-white px-4 sm:px-6 py-3 sm:py-5">
       <div className="max-w-5xl mx-auto">
         {/* Quick demo chips */}
-        <div className="flex flex-wrap gap-2 mb-4">
-          {quickDemoChips.map((chip, idx) => (
-            <button
-              key={idx}
-              onClick={() => handleChipClick(chip)}
-              disabled={disabled}
-              className="px-3.5 py-2 text-xs bg-gray-50 text-gray-600 rounded-full border border-gray-200 hover:border-[#2563EB] hover:text-[#2563EB] hover:bg-[#2563EB]/5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {chip}
-            </button>
-          ))}
+        <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0 mb-3 sm:mb-4">
+          <div className="flex sm:flex-wrap gap-2 min-w-max sm:min-w-0">
+            {quickDemoChips.map((chip, idx) => (
+              <button
+                key={idx}
+                onClick={() => handleChipClick(chip)}
+                disabled={disabled}
+                className="px-3 sm:px-3.5 py-1.5 sm:py-2 text-xs bg-gray-50 text-gray-600 rounded-full border border-gray-200 hover:border-[#2563EB] hover:text-[#2563EB] hover:bg-[#2563EB]/5 transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap flex-shrink-0"
+              >
+                {chip}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Input area */}
-        <div className="flex items-end gap-3">
+        <div className="flex items-end gap-2 sm:gap-3">
           <div className="flex-1 relative">
             <textarea
               ref={textareaRef}
@@ -78,24 +80,24 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               placeholder={placeholder}
               disabled={disabled}
               rows={1}
-              className="w-full px-5 py-3.5 pr-12 border border-gray-300 rounded-3xl focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] outline-none resize-none max-h-32 disabled:bg-gray-50 disabled:cursor-not-allowed text-gray-900 placeholder:text-gray-400"
+              className="w-full px-4 sm:px-5 py-3 sm:py-3.5 pr-10 sm:pr-12 border border-gray-300 rounded-3xl focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] outline-none resize-none max-h-32 disabled:bg-gray-50 disabled:cursor-not-allowed text-sm sm:text-base text-gray-900 placeholder:text-gray-400"
             />
             <button
               disabled
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-300 cursor-not-allowed"
+              className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 text-gray-300 cursor-not-allowed hidden sm:block"
             >
-              <Paperclip className="w-4.5 h-4.5" />
+              <Paperclip className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
             </button>
           </div>
           <button
             onClick={handleSubmit}
             disabled={disabled || !input.trim()}
-            className="w-11 h-11 bg-[#2563EB] text-white rounded-full hover:bg-[#1d4ed8] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center flex-shrink-0 shadow-sm"
+            className="w-10 h-10 sm:w-11 sm:h-11 bg-[#2563EB] text-white rounded-full hover:bg-[#1d4ed8] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center flex-shrink-0 shadow-sm"
           >
             {disabled ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
+              <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
             ) : (
-              <Send className="w-4.5 h-4.5" />
+              <Send className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
             )}
           </button>
         </div>
