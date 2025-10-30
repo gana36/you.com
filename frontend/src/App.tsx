@@ -32,12 +32,12 @@ function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
   const [collectedEntities, setCollectedEntities] = useState<Record<string, any>>({});
-  const [currentEntityIndex, setCurrentEntityIndex] = useState(0);
-  const [missingEntities, setMissingEntities] = useState<string[]>([]);
+  // const [currentEntityIndex, setCurrentEntityIndex] = useState(0);
+  const [, setMissingEntities] = useState<string[]>([]);
   const [contentViewerOpen, setContentViewerOpen] = useState(false);
   const [viewerContent, setViewerContent] = useState<any>(null);
-  const [evidenceDrawerOpen, setEvidenceDrawerOpen] = useState(false);
-  const [evidenceSteps, setEvidenceSteps] = useState<any[]>([]);
+  // const [evidenceDrawerOpen, setEvidenceDrawerOpen] = useState(false);
+  // const [evidenceSteps, setEvidenceSteps] = useState<any[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [currentIntent, setCurrentIntent] = useState<string | null>(null);
   const [thinkingMessageId, setThinkingMessageId] = useState<string | null>(null);
@@ -145,7 +145,7 @@ function App() {
 
     // Reset state for new query
     setCollectedEntities({});
-    setCurrentEntityIndex(0);
+    // setCurrentEntityIndex(0);
     setMissingEntities([]);
     setSessionId(null); // Reset session for new conversation
     setCurrentIntent(null);
@@ -516,7 +516,7 @@ function App() {
 
     let resultContent: React.ReactNode;
     let reasoningSteps: any[] = [];
-    let evidenceStepsToShow: any[] = [];
+    // let evidenceStepsToShow: any[] = [];
     
     console.log('DEBUG showResultsFromSearch - collectedEntities:', collectedEntities);
 
@@ -909,10 +909,10 @@ function App() {
     setThinkingMessageId(null);
     
     // Open evidence drawer if we have steps
-    if (evidenceStepsToShow.length > 0) {
-      setEvidenceSteps(evidenceStepsToShow);
-      setEvidenceDrawerOpen(true);
-    }
+    // if (evidenceStepsToShow.length > 0) {
+    //   setEvidenceSteps(evidenceStepsToShow);
+    //   setEvidenceDrawerOpen(true);
+    // }
     
     setActiveMessageId(null);
   };
